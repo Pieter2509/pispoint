@@ -33,16 +33,24 @@
   .top{position:fixed;z-index:1000;top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;right:12px;display:flex;gap:8px;justify-content:space-between;pointer-events:none}
   .top > *{pointer-events:auto}
   .chip{position:relative;background:var(--surface);color:var(--ink);border:0;border-radius:999px;padding:8px 14px;font-weight:700;font-size:15px;line-height:1.2;box-shadow:0 2px 10px rgba(19,41,75,.18);display:flex;align-items:center;gap:6px;cursor:pointer;max-width:70vw}
-  .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #nameLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #chipAv{display:flex;align-items:center;flex:none;line-height:1}
   .round{width:44px;height:44px;justify-content:center;padding:0;font-size:20px;flex:none}
   .badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--red);color:#fff;font-size:12px;line-height:20px;text-align:center;display:none}
   .badge.show{display:block}
 
-  /* Onderpaneel */
-  .sheet{position:fixed;z-index:1000;left:0;right:0;bottom:0;background:var(--surface);border-radius:22px 22px 0 0;padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px);box-shadow:0 -4px 20px rgba(19,41,75,.15)}
-  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
-  .stats{font-size:15px;color:var(--muted);line-height:1.3}
-  .stats b{color:var(--ink);font-size:18px}
+  /* Zwevende bediening onderin */
+  .sheet{position:fixed;z-index:1000;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;flex-direction:column;gap:10px;pointer-events:none;max-width:520px;margin:0 auto}
+  .sheet > *{pointer-events:auto}
+  .row{display:flex;align-items:flex-end;justify-content:space-between;gap:8px;pointer-events:none}
+  .row > *{pointer-events:auto}
+  .stats{background:var(--surface);border-radius:16px;padding:7px 12px;font-size:14px;color:var(--muted);line-height:1.25;box-shadow:0 2px 12px rgba(19,41,75,.25)}
+  .stats:empty{display:none}
+  .stats b{color:var(--ink);font-size:17px}
+  .sheet .seg{background:var(--surface);box-shadow:0 2px 12px rgba(19,41,75,.25)}
+  .sheet .big{border-radius:999px;box-shadow:0 4px 0 var(--yellow-dark),0 10px 28px rgba(19,41,75,.4)}
+  .sheet .big:active{box-shadow:0 1px 0 var(--yellow-dark),0 6px 18px rgba(19,41,75,.35)}
+  .leaflet-bottom{bottom:calc(env(safe-area-inset-bottom,0px) + 136px)}
   .seg{display:flex;background:var(--bg);border-radius:999px;padding:3px;flex:none}
   .seg button{border:0;background:transparent;color:var(--muted);font-weight:700;font-size:14px;padding:6px 12px;border-radius:999px;cursor:pointer}
   .seg button.on{background:var(--navy);color:#fff}
@@ -143,6 +151,17 @@
   .viewer img{max-width:100%;max-height:100%;border-radius:8px}
   .viewer button{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px}
 
+  /* Profiel van een vriend */
+  .friend{z-index:1600}
+  .pf-actions{display:flex;gap:10px;margin-top:14px}
+  .pf-actions .btn{flex:1}
+  .facts{list-style:none;margin:0;padding:0}
+  .facts li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:16px}
+  .facts li:first-child{border-top:0;padding-top:0}
+  .facts span{color:var(--muted)}
+  .facts b{text-align:right}
+  .p-head.tap{cursor:pointer}
+
   /* Installeren op iPhone */
   .install{position:fixed;inset:0;z-index:3500;background:rgba(19,41,75,.6);display:none;align-items:flex-end;justify-content:center}
   .install.show{display:flex}
@@ -226,6 +245,25 @@
 
     <button class="link" id="installLinkProfile" hidden>📲 Pispoint op je beginscherm zetten</button>
     <button class="link" id="logoutBtn">Uitloggen</button>
+  </div>
+</div>
+
+<!-- Profiel van een vriend -->
+<div class="profile friend" id="friendView" aria-hidden="true">
+  <div class="wrap">
+    <div class="pf-head">
+      <div class="pf-id">
+        <span id="frAvatar"></span>
+        <div><h2 id="frName"></h2><div class="handle" id="frHandle"></div></div>
+      </div>
+      <button class="chip round" id="frClose" aria-label="Sluiten">✕</button>
+    </div>
+    <div class="tiles" id="frTiles"></div>
+    <div class="box"><ul class="facts" id="frFacts"></ul></div>
+    <div class="pf-actions">
+      <button class="btn" id="frMap">Bekijk op kaart</button>
+    </div>
+    <button class="link" id="frRemove">Verwijderen als vriend</button>
   </div>
 </div>
 
@@ -545,7 +583,7 @@ function teardown(){
   if (unsubMe) unsubMe(); unsubMe = null;
   Object.values(pointListeners).forEach(u => u());
   pointListeners = {}; pointsByUid = {}; points = [];
-  closeProfile();
+  closeProfile(); closeFriend();
 }
 
 // Eén live-verbinding per persoon (jijzelf + elke vriend)
@@ -584,6 +622,8 @@ function popupFor(p){
   const txt = el('div');
   txt.append(el('div', 'p-name', mine ? `${owner.fullName} (jij)` : owner.fullName), el('div', 'p-user', '@' + owner.username));
   head.append(avatarEl(p.uid, 36), txt);
+  head.classList.add('tap');
+  head.onclick = () => { map.closePopup(); mine ? openProfile() : openFriend(p.uid); };
   box.append(head);
   box.append(el('div', 'p-time', fmt(p.createdAt)));
   if (p.pending) box.append(el('div', 'p-pending', '⏳ Wordt verstuurd zodra je bereik hebt'));
@@ -622,7 +662,7 @@ function render(){
   const list = filter === 'me' ? pointsOf(uid) : points;
   for (const p of list){
     const m = L.marker([p.lat, p.lng], { icon: dropIcon(colorFor(p.uid)) })
-      .bindPopup(() => popupFor(p), { closeButton: false })
+      .bindPopup(() => popupFor(p), { closeButton: false, autoPanPaddingTopLeft: [16, 80], autoPanPaddingBottomRight: [16, 170] })
       .on('popupopen', () => { openId = p.id; });
     m.addTo(layer); markers[p.id] = m;
   }
@@ -630,10 +670,11 @@ function render(){
   const nf = friends().length;
   const ofFriends = points.length - mine;
   $('stats').innerHTML = nf
-    ? `<b>${mine}</b> van jou<br>${ofFriends} van ${nf} ${nf === 1 ? 'vriend' : 'vrienden'}`
-    : `<b>${mine}</b> van jou<br>Voeg vrienden toe via je profiel`;
+    ? `<b>${mine}</b> van jou<br>${ofFriends} van vrienden`
+    : `<b>${mine}</b> van jou<br>Nog geen vrienden`;
   if (openId && markers[openId]) markers[openId].openPopup();
   renderProfile();
+  renderFriend();
 }
 
 // ---------- Profiel ----------
@@ -681,7 +722,7 @@ function renderProfile(){
   [...my.friends].sort((a, b) => person(a).fullName.localeCompare(person(b).fullName, 'nl')).forEach(id => {
     const n = pointsOf(id).length;
     fl.append(personRow(id, `${n} ${n === 1 ? 'pispoint' : 'pispoints'}`,
-      [button('x', '✕', () => removeFriend(id), 'Verwijderen als vriend')], () => showOnMap(id)));
+      [button('x', '✕', () => removeFriend(id), 'Verwijderen als vriend')], () => openFriend(id)));
   });
 
   // Verstuurd
@@ -704,10 +745,58 @@ function openProfile(){
 }
 function closeProfile(){ $('profile').classList.remove('show'); $('profile').setAttribute('aria-hidden', 'true'); }
 
+// ---------- Profiel van een vriend ----------
+let friendId = null;
+function statsFor(id){
+  const pts = pointsOf(id);
+  const now = new Date();
+  return {
+    pts,
+    likesIn: pts.reduce((n, p) => n + p.likes.filter(l => l !== id).length, 0),
+    thisMonth: pts.filter(p => p.createdAt.getMonth() === now.getMonth() && p.createdAt.getFullYear() === now.getFullYear()).length,
+    photos: pts.filter(p => p.hasPhoto).length,
+    fromMe: pts.filter(p => p.likes.includes(uid)).length,
+    first: pts[0], last: pts[pts.length - 1]
+  };
+}
+function openFriend(id){
+  friendId = id;
+  $('friendView').classList.add('show'); $('friendView').setAttribute('aria-hidden', 'false');
+  renderFriend();
+  // Naam en foto opnieuw ophalen, zodat je de nieuwste profielfoto ziet
+  usersCol.doc(id).get().then(d => { if (d.exists){ people[id] = toPerson(d.data()); render(); } }).catch(() => {});
+}
+function closeFriend(){ friendId = null; $('friendView').classList.remove('show'); $('friendView').setAttribute('aria-hidden', 'true'); }
+function renderFriend(){
+  if (!friendId) return;
+  const id = friendId, who = person(id), st = statsFor(id);
+  $('frAvatar').replaceChildren(avatarEl(id, 84));
+  $('frName').textContent = who.fullName;
+  $('frHandle').textContent = '@' + who.username;
+
+  const tiles = $('frTiles'); tiles.innerHTML = '';
+  [[st.pts.length, 'pispoints', 'hero'], [st.likesIn, st.likesIn === 1 ? 'like ontvangen' : 'likes ontvangen'], [st.thisMonth, 'deze maand']]
+    .forEach(([n, label, cls]) => { const t = el('div', 'tile' + (cls ? ' ' + cls : '')); t.append(el('b', null, n), el('span', null, label)); tiles.append(t); });
+
+  const facts = $('frFacts'); facts.innerHTML = '';
+  const fact = (label, value) => { const li = el('li'); li.append(el('span', null, label), el('b', null, value)); facts.append(li); };
+  fact('Eerste pispoint', st.first ? fmt(st.first.createdAt) : 'nog niet');
+  fact('Laatste pispoint', st.last ? fmt(st.last.createdAt) : 'nog niet');
+  fact('Uitzichtfoto\'s', st.photos);
+  fact('Door jou geliked', `${st.fromMe} van ${st.pts.length}`);
+
+  const isFriend = friends().includes(id);
+  $('frMap').disabled = !st.pts.length;
+  $('frRemove').hidden = !isFriend;
+}
+$('frClose').onclick = closeFriend;
+$('frMap').onclick = () => { const id = friendId; closeFriend(); showOnMap(id); };
+$('frRemove').onclick = () => { const id = friendId; if (removeFriend(id)) closeFriend(); };
+
 function showOnMap(id){
   const pts = pointsOf(id);
   if (!pts.length) return toast(`${firstName(person(id).fullName)} heeft nog geen pispoints`);
-  closeProfile();
+  closeProfile(); closeFriend();
   filter = 'friends'; setFilterButtons(); render();
   if (pts.length === 1) map.flyTo([pts[0].lat, pts[0].lng], 16);
   else map.flyToBounds(L.latLngBounds(pts.map(p => [p.lat, p.lng])), { padding: [60, 60], maxZoom: 16 });
@@ -773,11 +862,12 @@ function cancelRequest(id){
   commit(b, null, 'Intrekken mislukt');
 }
 function removeFriend(id){
-  if (!confirm(`${person(id).fullName} verwijderen als vriend? Jullie zien elkaars pispoints dan niet meer.`)) return;
+  if (!confirm(`${person(id).fullName} verwijderen als vriend? Jullie zien elkaars pispoints dan niet meer.`)) return false;
   const b = db.batch();
   b.update(usersCol.doc(uid), { friends: FV.arrayRemove(id) });
   b.update(usersCol.doc(id), { friends: FV.arrayRemove(uid) });
   commit(b, null, 'Verwijderen mislukt');
+  return true;
 }
 function saveFullName(){
   const n = cleanName($('fullNameInput').value);
@@ -925,6 +1015,7 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if ($('install').classList.contains('show')) closeInstall();
   else if ($('viewer').classList.contains('show')) $('viewer').classList.remove('show');
+  else if (friendId) closeFriend();
   else closeProfile();
 });
 </script>
