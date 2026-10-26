@@ -152,6 +152,15 @@
   .viewer img{max-width:100%;max-height:100%;border-radius:8px}
   .viewer button{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px}
 
+  /* Badges: landen en achievements */
+  .achs{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px}
+  .ach{border:0;background:var(--bg);border-radius:14px;padding:10px 4px 8px;text-align:center;color:var(--ink);cursor:pointer;font-family:inherit}
+  .ach .e{display:block;font-size:32px;line-height:1.1}
+  .ach .t{display:block;font-size:12px;font-weight:700;line-height:1.15;margin-top:4px}
+  .ach .s{display:block;font-size:11px;color:var(--muted);line-height:1.2}
+  .ach.locked{opacity:.38;filter:grayscale(1)}
+  .p-country{font-size:14px;margin:-4px 0 8px}
+
   /* Meldingen */
   .toggle{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:16px;cursor:pointer}
   .toggle input{width:22px;height:22px;accent-color:var(--navy);flex:none}
@@ -220,6 +229,15 @@
     <div class="tiles" id="pfTiles"></div>
     <p class="pf-last" id="pfLast"></p>
 
+    <div class="box">
+      <h3 id="pfCountriesTitle">Landen</h3>
+      <div class="achs" id="pfCountries"></div>
+    </div>
+    <div class="box">
+      <h3 id="pfAchTitle">Achievements</h3>
+      <div class="achs" id="pfAchs"></div>
+    </div>
+
     <div class="box" id="reqBox" hidden>
       <h3>Vriendverzoeken</h3>
       <ul class="list" id="reqList"></ul>
@@ -276,6 +294,14 @@
     </div>
     <div class="tiles" id="frTiles"></div>
     <div class="box"><ul class="facts" id="frFacts"></ul></div>
+    <div class="box">
+      <h3 id="frCountriesTitle">Landen</h3>
+      <div class="achs" id="frCountries"></div>
+    </div>
+    <div class="box">
+      <h3 id="frAchTitle">Achievements</h3>
+      <div class="achs" id="frAchs"></div>
+    </div>
     <div class="pf-actions">
       <button class="btn" id="frMap">Bekijk op kaart</button>
     </div>
@@ -619,13 +645,14 @@ function syncPointListeners(){
       pointsByUid[id] = snap.docs.map(d => {
         const x = d.data();
         return {
-          id: d.id, uid: x.uid, lat: x.lat, lng: x.lng, likes: x.likes || [], hasPhoto: !!x.hasPhoto,
+          id: d.id, uid: x.uid, lat: x.lat, lng: x.lng, likes: x.likes || [], hasPhoto: !!x.hasPhoto, country: x.country,
           createdAt: x.createdAt ? x.createdAt.toDate() : new Date(),
           pending: d.metadata.hasPendingWrites
         };
       });
       points = Object.values(pointsByUid).flat().sort((a, b) => a.createdAt - b.createdAt);
       render();
+      if (id === uid) fillCountries();
     }, err => {
       console.warn('Geen toegang tot punten van', id, err.code);
       delete pointListeners[id];
@@ -647,6 +674,7 @@ function popupFor(p){
   head.onclick = () => { map.closePopup(); mine ? openProfile() : openFriend(p.uid); };
   box.append(head);
   box.append(el('div', 'p-time', fmt(p.createdAt)));
+  if (p.country) box.append(el('div', 'p-country', p.country === '-' ? '🌊 Buiten elk land' : `${flag(p.country)} ${countryName(p.country)}`));
   if (p.pending) box.append(el('div', 'p-pending', '⏳ Wordt verstuurd zodra je bereik hebt'));
 
   if (p.hasPhoto){
@@ -751,6 +779,7 @@ function renderProfile(){
   const sl = $('sentList'); sl.innerHTML = '';
   my.sent.forEach(id => sl.append(personRow(id, 'wacht op antwoord', [button('btn small ghost', 'Intrekken', () => cancelRequest(id))])));
 
+  renderBadges(uid, 'pf');
   renderResults();
 }
 
@@ -806,6 +835,7 @@ function renderFriend(){
   fact('Laatste pispoint', st.last ? fmt(st.last.createdAt) : 'nog niet');
   fact('Uitzichtfoto\'s', st.photos);
   fact('Door jou geliked', `${st.fromMe} van ${st.pts.length}`);
+  renderBadges(id, 'fr');
 
   const isFriend = friends().includes(id);
   $('frMap').disabled = !st.pts.length;
@@ -973,8 +1003,17 @@ async function register(){
     const { latitude: lat, longitude: lng, accuracy } = pos.coords;
     const ref = col.doc();
     openId = ref.id;
+    const before = pointsOf(uid);
+    lookingUp.add(ref.id);
     ref.set({ uid, lat, lng, accuracy: Math.round(accuracy), createdAt: TS.now(), likes: [] })
       .catch(() => toast('Opslaan mislukt'));
+    // Land opzoeken en nieuwe badges vieren
+    lookupCountry(lat, lng).then(c => {
+      lookingUp.delete(ref.id);
+      if (c === null) return;
+      col.doc(ref.id).update({ country: c }).catch(() => {});
+      celebrate(before, { id: ref.id, createdAt: new Date(), country: c, likes: [], hasPhoto: false });
+    });
     map.flyTo([lat, lng], 17);
     if (navigator.vibrate) navigator.vibrate(60);
     toast('Pispoint geregistreerd 💧');
@@ -992,6 +1031,112 @@ async function locate(){
     else myMarker.setLatLng(ll);
     map.flyTo(ll, 16);
   } catch(e){ toast('Locatie niet beschikbaar'); }
+}
+
+// ---------- Landen ----------
+const regionNames = (() => { try { return new Intl.DisplayNames(['nl'], { type: 'region' }); } catch(e){ return null; } })();
+const flag = c => c.toUpperCase().replace(/./g, ch => String.fromCodePoint(127397 + ch.charCodeAt(0)));
+const countryName = c => { try { return (regionNames && regionNames.of(c)) || c; } catch(e){ return c; } };
+const lookingUp = new Set();
+
+// Land bij een locatie opzoeken via OpenStreetMap (dezelfde bron als de kaart).
+// Geeft een landcode terug ('NL'), '-' als de plek buiten elk land ligt, of null als het (nu) niet lukt.
+async function lookupCountry(lat, lng){
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try{
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=3&lat=${lat}&lon=${lng}`, { signal: ctrl.signal });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const c = j.address && j.address.country_code;
+    return c ? c.toUpperCase().slice(0, 3) : '-';
+  } catch(e){ return null; }
+  finally { clearTimeout(timer); }
+}
+
+// Oudere pispoints zonder land alsnog aanvullen (rustig, één per seconde)
+let filling = false;
+async function fillCountries(){
+  if (filling || !uid) return;
+  filling = true;
+  try{
+    const todo = pointsOf(uid).filter(p => p.country === undefined && !p.pending && !lookingUp.has(p.id));
+    for (const p of todo){
+      const c = await lookupCountry(p.lat, p.lng);
+      if (c === null) break;
+      await col.doc(p.id).update({ country: c }).catch(() => {});
+      await new Promise(r => setTimeout(r, 1100));
+    }
+  } finally { filling = false; }
+}
+
+function countriesOf(pts){
+  const map = new Map();
+  for (const p of pts){
+    if (!p.country || p.country === '-') continue;
+    const e = map.get(p.country) || { code: p.country, count: 0, first: p.createdAt };
+    e.count++; if (p.createdAt < e.first) e.first = p.createdAt;
+    map.set(p.country, e);
+  }
+  return [...map.values()].sort((a, b) => a.first - b.first);
+}
+
+// ---------- Achievements ----------
+// Nieuwe achievement toevoegen? Voeg hier een regel toe. "test" krijgt alle pispoints van één persoon
+// (met createdAt, country, hasPhoto, likes, lat, lng) en geeft true als de badge verdiend is.
+const dayKey = d => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+const perDay = pts => pts.reduce((m, p) => { const k = dayKey(p.createdAt); (m[k] = m[k] || []).push(p); return m; }, {});
+const ACHIEVEMENTS = [
+  { id: 'eerste',    emoji: '💧', name: 'Eerste druppel',   desc: 'Je eerste pispoint geregistreerd',          test: pts => pts.length >= 1 },
+  { id: 'tien',      emoji: '🔟', name: 'Vaste klant',      desc: '10 pispoints geregistreerd',                test: pts => pts.length >= 10 },
+  { id: 'vijftig',   emoji: '🏆', name: 'Legende',          desc: '50 pispoints geregistreerd',                test: pts => pts.length >= 50 },
+  { id: 'nacht',     emoji: '🌙', name: 'Nachtbraker',      desc: 'Geplast tussen 00:00 en 05:00',             test: pts => pts.some(p => p.createdAt.getHours() < 5) },
+  { id: 'vroeg',     emoji: '🐓', name: 'Vroege vogel',     desc: 'Geplast tussen 05:00 en 07:00',             test: pts => pts.some(p => { const h = p.createdAt.getHours(); return h >= 5 && h < 7; }) },
+  { id: 'kraan',     emoji: '🚰', name: 'Lekkende kraan',   desc: '3 pispoints op één dag',                    test: pts => Object.values(perDay(pts)).some(d => d.length >= 3) },
+  { id: 'foto',      emoji: '📸', name: 'Uitzichtjager',    desc: 'Een foto van het uitzicht toegevoegd',      test: pts => pts.some(p => p.hasPhoto) },
+  { id: 'populair',  emoji: '❤️', name: 'Publiekslieveling', desc: 'Een pispoint met 5 likes of meer',          test: pts => pts.some(p => p.likes.filter(l => l !== p.uid).length >= 5) },
+  { id: 'grens',     emoji: '🛂', name: 'Grensganger',      desc: 'Op één dag in 2 landen geplast',            test: pts => Object.values(perDay(pts)).some(d => countriesOf(d).length >= 2) },
+  { id: 'landen3',   emoji: '🌍', name: 'Wereldreiziger',   desc: 'In 3 verschillende landen geplast',         test: pts => countriesOf(pts).length >= 3 },
+  { id: 'landen10',  emoji: '✈️', name: 'Wereldplasser',    desc: 'In 10 verschillende landen geplast',        test: pts => countriesOf(pts).length >= 10 },
+  { id: 'zee',       emoji: '🌊', name: 'Zeebenen',         desc: 'Geplast buiten elk land, bijvoorbeeld op zee', test: pts => pts.some(p => p.country === '-') },
+];
+const unlockedIds = pts => new Set(ACHIEVEMENTS.filter(a => { try { return a.test(pts); } catch(e){ return false; } }).map(a => a.id));
+
+function badge(emoji, title, sub, locked, onTap){
+  const b = el('button', 'ach' + (locked ? ' locked' : ''));
+  b.append(el('span', 'e', emoji), el('span', 't', title));
+  if (sub) b.append(el('span', 's', sub));
+  b.onclick = onTap;
+  return b;
+}
+function renderBadges(id, prefix){
+  const pts = pointsOf(id);
+  const self = id === uid;
+  const who = self ? 'je' : firstName(person(id).fullName);
+
+  const cs = countriesOf(pts);
+  $(prefix + 'CountriesTitle').textContent = `Landen (${cs.length})`;
+  const cEl = $(prefix + 'Countries'); cEl.innerHTML = '';
+  if (!cs.length) cEl.append(el('p', 'empty', self ? 'Nog geen landen. Registreer een pispoint en verdien je eerste vlag.' : `${who} heeft nog geen landen.`));
+  cs.forEach(c => cEl.append(badge(flag(c.code), countryName(c.code), `${c.count}×`, false,
+    () => toast(`${flag(c.code)} ${countryName(c.code)}: ${c.count} ${c.count === 1 ? 'pispoint' : 'pispoints'}, sinds ${c.first.toLocaleDateString('nl-NL')}`))));
+
+  const got = unlockedIds(pts);
+  $(prefix + 'AchTitle').textContent = `Achievements (${got.size}/${ACHIEVEMENTS.length})`;
+  const aEl = $(prefix + 'Achs'); aEl.innerHTML = '';
+  [...ACHIEVEMENTS].sort((a, b) => got.has(b.id) - got.has(a.id)).forEach(a =>
+    aEl.append(badge(a.emoji, a.name, '', !got.has(a.id), () => toast(`${a.emoji} ${a.name}: ${a.desc}${got.has(a.id) ? '' : ' (nog niet behaald)'}`))));
+}
+
+// Na registreren: nieuw land of nieuwe achievement vieren
+function celebrate(before, newPoint){
+  const after = [...before.filter(p => p.id !== newPoint.id), newPoint];
+  const msgs = [];
+  const c = newPoint.country;
+  if (c && c !== '-' && !before.some(p => p.country === c)) msgs.push(`Nieuw land! ${flag(c)} ${countryName(c)}`);
+  const had = unlockedIds(before), now = unlockedIds(after);
+  ACHIEVEMENTS.filter(a => now.has(a.id) && !had.has(a.id)).forEach(a => msgs.push(`🏆 ${a.emoji} ${a.name}`));
+  msgs.forEach((m, i) => setTimeout(() => { toast(m); if (navigator.vibrate) navigator.vibrate([40, 60, 40]); }, 1600 + i * 2800));
 }
 
 // ---------- Pushmeldingen ----------
