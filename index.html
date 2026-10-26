@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="Pispoint">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
 <title>Pispoint</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -151,6 +152,11 @@
   .viewer img{max-width:100%;max-height:100%;border-radius:8px}
   .viewer button{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px}
 
+  /* Meldingen */
+  .toggle{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:16px;cursor:pointer}
+  .toggle input{width:22px;height:22px;accent-color:var(--navy);flex:none}
+  #pushStatus{margin-bottom:10px}
+
   /* Profiel van een vriend */
   .friend{z-index:1600}
   .pf-actions{display:flex;gap:10px;margin-top:14px}
@@ -243,6 +249,16 @@
       </div>
     </div>
 
+    <div class="box" id="pushBox">
+      <h3>Meldingen 🔔</h3>
+      <p class="empty" id="pushStatus"></p>
+      <div id="pushPrefs" hidden>
+        <label class="toggle"><input type="checkbox" id="prefPoints" checked> Nieuwe pispoints van vrienden</label>
+        <label class="toggle"><input type="checkbox" id="prefRequests" checked> Vriendverzoeken</label>
+      </div>
+      <button class="btn" id="pushBtn">Meldingen aanzetten</button>
+    </div>
+
     <button class="link" id="installLinkProfile" hidden>📲 Pispoint op je beginscherm zetten</button>
     <button class="link" id="logoutBtn">Uitloggen</button>
   </div>
@@ -329,6 +345,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script>
 // ====== VUL DIT IN (Firebase console > Projectinstellingen > Je apps > Web-app) ======
 const firebaseConfig = {
@@ -339,6 +356,8 @@ const firebaseConfig = {
   messagingSenderId: "853150941702",
   appId: "1:853150941702:web:2d8aab3de036d9e2da3987"
 };
+// Firebase console > Projectinstellingen > Cloud Messaging > Web Push-certificaten > Sleutelpaar
+const VAPID_KEY = "BK-3-VkYTST2EGmFB97FpaN5J3hTEFanr9VcqeXEtlaQS1-2f-clwM59ib5yW7NLlbv5jwXIO_ezPJrzLPcnOj0";
 // =====================================================================================
 
 firebase.initializeApp(firebaseConfig);
@@ -577,6 +596,8 @@ auth.onAuthStateChanged(async user => {
   }, err => console.error(err));
   locate();
   maybeShowInstall();
+  watchPrefs();
+  if (pushOn()) saveToken().catch(e => console.warn('Token vernieuwen mislukt', e));
 });
 
 function teardown(){
@@ -742,6 +763,7 @@ function openProfile(){
   $('fullNameInput').value = my.fullName;
   $('profile').classList.add('show'); $('profile').setAttribute('aria-hidden', 'false');
   renderProfile();
+  renderPush();
 }
 function closeProfile(){ $('profile').classList.remove('show'); $('profile').setAttribute('aria-hidden', 'true'); }
 
@@ -972,6 +994,95 @@ async function locate(){
   } catch(e){ toast('Locatie niet beschikbaar'); }
 }
 
+// ---------- Pushmeldingen ----------
+const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const appUrl = () => location.origin + location.pathname.replace(/[^/]*$/, '');
+const TOKEN_KEY = 'pispoint_push_token';
+let messaging = null;
+let prefs = { notifyPoints: true, notifyRequests: true };
+let unsubPrefs = null;
+const pushReady = (async () => {
+  try{
+    if (pushSupported && await firebase.messaging.isSupported()){
+      messaging = firebase.messaging();
+      // App staat open: laat de melding als toast zien
+      messaging.onMessage(m => { const n = m.notification || {}; toast(n.body || n.title || 'Nieuwe melding'); });
+    }
+  } catch(e){ console.warn('Meldingen niet beschikbaar', e); }
+})();
+const privateRef = () => db.collection('private').doc(uid);
+const pushOn = () => pushSupported && Notification.permission === 'granted' && !!localStorage.getItem(TOKEN_KEY);
+
+function watchPrefs(){
+  if (unsubPrefs) unsubPrefs();
+  unsubPrefs = privateRef().onSnapshot(d => {
+    const x = d.data() || {};
+    prefs = { notifyPoints: x.notifyPoints !== false, notifyRequests: x.notifyRequests !== false };
+    renderPush();
+  }, () => {});
+}
+async function saveToken(){
+  await pushReady;
+  if (!messaging) throw new Error('niet ondersteund');
+  const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js?c=' + encodeURIComponent(JSON.stringify(firebaseConfig)));
+  const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+  if (!token) throw new Error('geen token');
+  const old = localStorage.getItem(TOKEN_KEY);
+  if (old && old !== token) privateRef().collection('tokens').doc(old).delete().catch(() => {});
+  await privateRef().collection('tokens').doc(token).set({ url: appUrl(), device: navigator.userAgent.slice(0, 200), updatedAt: TS.now() });
+  localStorage.setItem(TOKEN_KEY, token);
+}
+async function enablePush(){
+  const btn = $('pushBtn'); btn.disabled = true;
+  try{
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted'){ toast('Meldingen zijn niet toegestaan'); return; }
+    await saveToken();
+    await privateRef().set(prefs, { merge: true });
+    toast('Meldingen staan aan 🔔');
+  } catch(e){
+    console.error(e); toast('Meldingen aanzetten mislukt');
+  } finally { btn.disabled = false; renderPush(); }
+}
+async function disablePush(){
+  const token = localStorage.getItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+  if (token && uid) await privateRef().collection('tokens').doc(token).delete().catch(() => {});
+  try { await pushReady; if (messaging && token) await messaging.deleteToken(); } catch(e){}
+  renderPush();
+}
+function renderPush(){
+  const status = $('pushStatus'), btn = $('pushBtn');
+  $('pushPrefs').hidden = true; btn.hidden = false; btn.className = 'btn';
+  $('prefPoints').checked = prefs.notifyPoints;
+  $('prefRequests').checked = prefs.notifyRequests;
+  if (!pushSupported){
+    if (canInstall){
+      status.textContent = 'Zet Pispoint eerst op je beginscherm. Daarna kun je hier meldingen aanzetten.';
+      btn.textContent = 'Uitleg bekijken';
+      btn.onclick = () => { closeProfile(); openInstall(); };
+    } else {
+      status.textContent = 'Deze browser ondersteunt geen meldingen.';
+      btn.hidden = true;
+    }
+  } else if (Notification.permission === 'denied'){
+    status.textContent = 'Meldingen zijn geblokkeerd. Zet ze aan in de instellingen van je telefoon, bij Meldingen > Pispoint.';
+    btn.hidden = true;
+  } else if (pushOn()){
+    status.textContent = 'Meldingen staan aan op dit apparaat.';
+    $('pushPrefs').hidden = false;
+    btn.textContent = 'Uitzetten op dit apparaat';
+    btn.className = 'btn ghost';
+    btn.onclick = disablePush;
+  } else {
+    status.textContent = 'Krijg een melding als vrienden een nieuw pispoint achterlaten of als iemand je vriend wil worden.';
+    btn.textContent = 'Meldingen aanzetten';
+    btn.onclick = enablePush;
+  }
+}
+$('prefPoints').onchange = e => privateRef().set({ notifyPoints: e.target.checked }, { merge: true }).catch(() => toast('Opslaan mislukt'));
+$('prefRequests').onchange = e => privateRef().set({ notifyRequests: e.target.checked }, { merge: true }).catch(() => toast('Opslaan mislukt'));
+
 // ---------- Installeren op iPhone ----------
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
@@ -1008,7 +1119,12 @@ $('locateBtn').onclick = locate;
 $('nameChip').onclick = openProfile;
 $('pfClose').onclick = closeProfile;
 $('fullNameSave').onclick = saveFullName;
-$('logoutBtn').onclick = () => { if (confirm('Uitloggen?')) auth.signOut(); };
+$('logoutBtn').onclick = async () => {
+  if (!confirm('Uitloggen? Meldingen op dit apparaat gaan dan uit.')) return;
+  await disablePush();
+  if (unsubPrefs) unsubPrefs(); unsubPrefs = null;
+  auth.signOut();
+};
 $('fAll').onclick = () => { filter = 'friends'; setFilterButtons(); render(); };
 $('fMe').onclick  = () => { filter = 'me'; setFilterButtons(); render(); };
 document.addEventListener('keydown', e => {

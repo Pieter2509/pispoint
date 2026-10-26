@@ -28,7 +28,11 @@ service cloud.firestore {
 
       allow create: if signedIn() && uid == me()
         && request.resource.data.keys().hasOnly(['username','fullName','fullNameLower','searchKeys','photo','friends','requests','sent','createdAt'])
-        && request.resource.data.username == request.auth.token.email.split('@')[0]
+        && (request.resource.data.username == request.auth.token.email.split('@')[0]
+            || (request.auth.token.email.split('@')[0].matches('h-[0-9a-f]{40}')
+                && request.resource.data.username is string
+                && request.resource.data.username.size() <= 40
+                && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == me()))
         && validName()
         && request.resource.data.friends == []
         && request.resource.data.requests == []
@@ -53,6 +57,22 @@ service cloud.firestore {
         && request.resource.data.requests.size() <= 300;
 
       allow delete: if false;
+    }
+
+    // ---------- Privé: meldingsinstellingen en apparaten (alleen voor jezelf) ----------
+    match /private/{uid}/{rest=**} {
+      allow read, write: if signedIn() && uid == me();
+    }
+
+    // ---------- Gebruikersnamen met speciale tekens ----------
+    match /usernames/{name} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == me()
+        && request.auth.token.email.split('@')[0].matches('h-[0-9a-f]{40}')
+        && getAfter(/databases/$(database)/documents/users/$(me())).data.username == name;
+      allow update, delete: if false;
     }
 
     // ---------- Pispoints ----------
