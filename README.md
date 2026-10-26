@@ -9,7 +9,7 @@ Een kaart van alle plekken waar jij en je vrienden hebben wildgeplast. Met accou
 3. **Firestore Database**: maak de database aan als je die nog niet hebt (locatie bijvoorbeeld `europe-west`).
 4. Firestore, tabblad **Regels**: vervang alles door de inhoud van `firestore.rules` en klik **Publiceren**.
 5. **Projectinstellingen** > *Je apps* > **Web-app** (`</>`). Kopieer het `firebaseConfig`-blok en plak het bovenaan het script in `index.html`.
-6. Zet `index.html` in een GitHub-repo en zet **Settings > Pages** aan (branch `main`, map `/ (root)`).
+6. Zet `index.html`, `install-iphone.mp4` en `apple-touch-icon.png` in een GitHub-repo (allemaal in de hoofdmap) en zet **Settings > Pages** aan (branch `main`, map `/ (root)`).
 
 Oude testdata van eerdere versies (punten met alleen een naam) kun je in Firestore verwijderen; die zijn niet meer zichtbaar.
 
@@ -35,3 +35,9 @@ Er is geen e-mailadres, dus geen herstelmail. Verwijder het account in **Authent
 - Tik in je profiel op je foto om een profielfoto te kiezen.
 - Foto's worden op de telefoon verkleind en opgeslagen in Firestore (`photos` en het veld `photo` in `users`). GPS- en cameragegevens worden er daarbij uitgehaald.
 - Het gratis Spark-abonnement is genoeg: 1 GB opslag is ruwweg 5.000 uitzichtfoto's.
+
+## Installeren op iPhone
+
+- Wie de site in Safari op een iPhone opent, krijgt na het inloggen één keer een uitleg met video (`install-iphone.mp4`) over **Zet op beginscherm**.
+- De uitleg is daarna terug te vinden via de knop op het inlogscherm en onderaan het profiel.
+- `apple-touch-icon.png` is het icoon op het beginscherm.

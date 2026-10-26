@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#13294B">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pispoint">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Pispoint</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -140,6 +143,19 @@
   .viewer img{max-width:100%;max-height:100%;border-radius:8px}
   .viewer button{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px}
 
+  /* Installeren op iPhone */
+  .install{position:fixed;inset:0;z-index:3500;background:rgba(19,41,75,.6);display:none;align-items:flex-end;justify-content:center}
+  .install.show{display:flex}
+  .install-card{background:var(--surface);color:var(--ink);width:100%;max-width:440px;max-height:100%;overflow-y:auto;border-radius:22px 22px 0 0;padding:16px 18px calc(env(safe-area-inset-bottom,0px) + 18px)}
+  .install-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+  .install-head h2{margin:0;font-size:24px;line-height:1.1}
+  .install-body{display:flex;gap:14px;align-items:flex-start}
+  .install video{width:42%;max-width:170px;aspect-ratio:384/848;border-radius:16px;background:#000;flex:none}
+  .install ol{margin:0;padding-left:20px;font-size:16px;line-height:1.35}
+  .install li{margin-bottom:10px}
+  .install .note{color:var(--muted);font-size:14px;margin:4px 0 0}
+  .install-link{display:block;width:100%;margin-top:12px;border:0;border-radius:14px;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:16px;padding:12px;cursor:pointer}
+
   .toast{position:fixed;z-index:3000;left:50%;top:calc(env(safe-area-inset-top,0px) + 66px);transform:translateX(-50%) translateY(-20px);opacity:0;background:var(--navy);color:#fff;padding:10px 16px;border-radius:999px;font-weight:700;transition:.25s;pointer-events:none;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   @media (prefers-reduced-motion: reduce){ .toast,.big,.profile{transition:none} }
@@ -208,6 +224,7 @@
       </div>
     </div>
 
+    <button class="link" id="installLinkProfile" hidden>📲 Pispoint op je beginscherm zetten</button>
     <button class="link" id="logoutBtn">Uitloggen</button>
   </div>
 </div>
@@ -240,12 +257,33 @@
       <p class="msg" id="authMsg" role="alert"></p>
       <button class="big" id="authBtn">Inloggen</button>
     </div>
+    <button class="install-link" id="installLinkAuth" hidden>📲 Zet Pispoint op je beginscherm</button>
   </div>
 </div>
 
 <input type="file" id="photoFile" accept="image/*" hidden>
 <input type="file" id="avatarFile" accept="image/*" hidden>
 <div class="viewer" id="viewer"><img id="viewerImg" alt="Foto van het uitzicht"><button class="chip round" aria-label="Sluiten">✕</button></div>
+
+<div class="install" id="install" role="dialog" aria-modal="true" aria-labelledby="installTitle">
+  <div class="install-card">
+    <div class="install-head">
+      <h2 id="installTitle">Pispoint als app</h2>
+      <button class="chip round" id="installClose" aria-label="Sluiten">✕</button>
+    </div>
+    <div class="install-body">
+      <video id="installVideo" src="install-iphone.mp4" muted loop playsinline preload="metadata"></video>
+      <div>
+        <ol>
+          <li>Tik in Safari op het <b>deel-icoon</b>. Zie je dat niet, tik dan eerst op <b>•••</b> rechtsonder.</li>
+          <li>Kies <b>Zet op beginscherm</b>. Staat het er niet tussen, tik dan op <b>Bekijk meer</b>.</li>
+          <li>Laat <b>Open als webapp</b> aan en tik op <b>Voeg toe</b>.</li>
+        </ol>
+        <p class="note">Open daarna Pispoint vanaf je beginscherm en log één keer opnieuw in.</p>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -480,6 +518,7 @@ auth.onAuthStateChanged(async user => {
     render();
   }, err => console.error(err));
   locate();
+  maybeShowInstall();
 });
 
 function teardown(){
@@ -823,6 +862,28 @@ async function locate(){
   } catch(e){ toast('Locatie niet beschikbaar'); }
 }
 
+// ---------- Installeren op iPhone ----------
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+const canInstall = isIOS && !isStandalone;
+$('installLinkAuth').hidden = !canInstall;
+$('installLinkProfile').hidden = !canInstall;
+function openInstall(){
+  $('install').classList.add('show');
+  const v = $('installVideo'); v.currentTime = 0; v.play().catch(() => {});
+  try { localStorage.setItem('pispoint_install_seen', '1'); } catch(e){}
+}
+function closeInstall(){ $('install').classList.remove('show'); $('installVideo').pause(); }
+$('installLinkAuth').onclick = openInstall;
+$('installLinkProfile').onclick = () => { closeProfile(); openInstall(); };
+$('installClose').onclick = closeInstall;
+$('install').onclick = e => { if (e.target === $('install')) closeInstall(); };
+// Na de eerste keer inloggen in Safari één keer vanzelf tonen
+function maybeShowInstall(){
+  let seen = false; try { seen = localStorage.getItem('pispoint_install_seen'); } catch(e){}
+  if (canInstall && !seen) setTimeout(openInstall, 1200);
+}
+
 // ---------- Knoppen ----------
 function setFilterButtons(){
   $('fAll').classList.toggle('on', filter === 'friends');
@@ -842,7 +903,8 @@ $('fAll').onclick = () => { filter = 'friends'; setFilterButtons(); render(); };
 $('fMe').onclick  = () => { filter = 'me'; setFilterButtons(); render(); };
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if ($('viewer').classList.contains('show')) $('viewer').classList.remove('show');
+  if ($('install').classList.contains('show')) closeInstall();
+  else if ($('viewer').classList.contains('show')) $('viewer').classList.remove('show');
   else closeProfile();
 });
 </script>
