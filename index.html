@@ -243,8 +243,8 @@
         <button id="tabRegister" role="tab">Registreren</button>
       </div>
       <label class="f"><span>Gebruikersnaam</span>
-        <input class="txt" id="aUser" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="20">
-        <small id="userHint" hidden>3 tot 20 tekens: kleine letters, cijfers, _ of .</small>
+        <input class="txt" id="aUser" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="40">
+        <small id="userHint" hidden>3 tot 40 tekens: letters, cijfers, _ of .</small>
       </label>
       <label class="f" id="nameField" hidden><span>Volledige naam</span>
         <input class="txt" id="aName" autocomplete="name" maxlength="40">
@@ -314,7 +314,7 @@ const TS = firebase.firestore.Timestamp;
 
 // Gebruikersnamen worden intern omgezet naar een (niet-bestaand) e-mailadres voor Firebase Auth
 const DOMAIN = 'pispoint.app';
-const USER_OK = /^[a-z0-9_.]{3,20}$/;
+const USER_OK = /^[a-z0-9_.]{3,40}$/;
 
 const $ = id => document.getElementById(id);
 let uid = null;
@@ -362,7 +362,7 @@ const pointsOf = id => points.filter(p => p.uid === id);
 function prefixes(s, max){ const out = []; for (let i = 2; i <= Math.min(s.length, max); i++) out.push(s.slice(0, i)); return out; }
 function searchKeysFor(username, fullName){
   const f = fullName.toLowerCase();
-  const keys = new Set([...prefixes(username, 20), ...prefixes(f, 30), ...f.split(' ').flatMap(w => prefixes(w, 20))]);
+  const keys = new Set([...prefixes(username, 40), ...prefixes(f, 30), ...f.split(' ').flatMap(w => prefixes(w, 20))]);
   return [...keys].slice(0, 150);
 }
 
@@ -461,7 +461,7 @@ async function submitAuth(){
   const u = $('aUser').value.trim().toLowerCase();
   const p = $('aPass').value;
   const msg = $('authMsg');
-  if (!USER_OK.test(u)) return msg.textContent = 'Gebruikersnaam: 3 tot 20 tekens, kleine letters, cijfers, _ of .';
+  if (!USER_OK.test(u)) return msg.textContent = 'Gebruikersnaam: 3 tot 40 tekens, alleen letters, cijfers, _ of . (geen spaties)';
   if (authMode === 'register'){
     const n = cleanName($('aName').value);
     if (!n) return msg.textContent = 'Vul je volledige naam in';
