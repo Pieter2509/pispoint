@@ -244,7 +244,7 @@
       </div>
       <label class="f"><span>Gebruikersnaam</span>
         <input class="txt" id="aUser" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="40">
-        <small id="userHint" hidden>3 tot 40 tekens: letters, cijfers, _ of .</small>
+        <small id="userHint" hidden>3 tot 40 tekens, zonder spaties. Ä, é, ! en dergelijke mogen.</small>
       </label>
       <label class="f" id="nameField" hidden><span>Volledige naam</span>
         <input class="txt" id="aName" autocomplete="name" maxlength="40">
@@ -314,7 +314,18 @@ const TS = firebase.firestore.Timestamp;
 
 // Gebruikersnamen worden intern omgezet naar een (niet-bestaand) e-mailadres voor Firebase Auth
 const DOMAIN = 'pispoint.app';
-const USER_OK = /^[a-z0-9_.]{3,40}$/;
+// Gebruikersnamen: alles mag behalve spaties en /. Hoofdletters worden kleine letters.
+const USER_OK = /^[^\s\/]{3,40}$/u;
+const PLAIN = /^[a-z0-9_.]{3,40}$/;   // eenvoudige namen: rechtstreeks als intern adres
+const normUser = u => u.trim().normalize('NFC').toLowerCase().replace(/^@/, '');
+let pendingUsername = null;
+// Intern Firebase-adres. Namen met speciale tekens (ä, !, …) worden omgezet in een vaste code.
+async function emailFor(u){
+  if (PLAIN.test(u)) return `${u}@${DOMAIN}`;
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(u));
+  const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
+  return `h-${hex}@${DOMAIN}`;
+}
 
 const $ = id => document.getElementById(id);
 let uid = null;
@@ -458,10 +469,10 @@ function authError(e){
   }
 }
 async function submitAuth(){
-  const u = $('aUser').value.trim().toLowerCase();
+  const u = normUser($('aUser').value);
   const p = $('aPass').value;
   const msg = $('authMsg');
-  if (!USER_OK.test(u)) return msg.textContent = 'Gebruikersnaam: 3 tot 40 tekens, alleen letters, cijfers, _ of . (geen spaties)';
+  if (!USER_OK.test(u) || u.startsWith('__')) return msg.textContent = 'Gebruikersnaam: 3 tot 40 tekens, zonder spaties of /';
   if (authMode === 'register'){
     const n = cleanName($('aName').value);
     if (!n) return msg.textContent = 'Vul je volledige naam in';
@@ -470,11 +481,13 @@ async function submitAuth(){
   } else if (!p) return msg.textContent = 'Vul je wachtwoord in';
 
   $('authBtn').disabled = true; msg.textContent = '';
+  pendingUsername = u;
   try{
-    if (authMode === 'register') await auth.createUserWithEmailAndPassword(`${u}@${DOMAIN}`, p);
-    else await auth.signInWithEmailAndPassword(`${u}@${DOMAIN}`, p);
+    const email = await emailFor(u);
+    if (authMode === 'register') await auth.createUserWithEmailAndPassword(email, p);
+    else await auth.signInWithEmailAndPassword(email, p);
   } catch(e){
-    pendingFullName = null;
+    pendingFullName = null; pendingUsername = null;
     msg.textContent = authError(e);
   } finally { $('authBtn').disabled = false; }
 }
@@ -483,13 +496,20 @@ async function ensureProfile(user){
   const ref = usersCol.doc(user.uid);
   const d = await ref.get();
   if (d.exists) return;
-  const username = user.email.split('@')[0];
+  const prefix = user.email.split('@')[0];
+  const coded = prefix.startsWith('h-');
+  const username = coded ? pendingUsername : prefix;
+  if (!username) throw new Error('Gebruikersnaam onbekend; log opnieuw in');
   const fullName = pendingFullName || username;
-  await ref.set({
+  const b = db.batch();
+  b.set(ref, {
     username, fullName, fullNameLower: fullName.toLowerCase(),
     searchKeys: searchKeysFor(username, fullName),
     friends: [], requests: [], sent: [], createdAt: TS.now()
   });
+  // Bij een gecodeerd adres bewijst dit document dat de gebruikersnaam bij dit account hoort
+  if (coded) b.set(db.collection('usernames').doc(username), { uid: user.uid });
+  await b.commit();
 }
 
 auth.onAuthStateChanged(async user => {
@@ -505,7 +525,7 @@ auth.onAuthStateChanged(async user => {
   $('authScreen').hidden = true;
   $('aPass').value = '';
   try { await ensureProfile(user); } catch(e){ console.error(e); }
-  pendingFullName = null;
+  pendingFullName = null; pendingUsername = null;
   unsubMe = usersCol.doc(uid).onSnapshot(d => {
     my = d.data() || null;
     if (!my) return;
@@ -701,7 +721,7 @@ $('searchInput').addEventListener('input', () => {
   searchTimer = setTimeout(runSearch, 300);
 });
 async function runSearch(){
-  const q = cleanName($('searchInput').value).toLowerCase().replace(/^@/, '');
+  const q = cleanName($('searchInput').value).normalize('NFC').toLowerCase().replace(/^@/, '');
   if (q.length < 2){ results = []; renderResults(); return; }
   try{
     const snap = await usersCol.where('searchKeys', 'array-contains', q.slice(0, 30)).limit(15).get();
