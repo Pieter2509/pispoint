@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#13294B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Pispoint</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#13294B; --yellow:#F2C230; --yellow-dark:#D9A812; --red:#E0475B;
+    --surface:#FFFFFF; --ink:#13294B; --muted:#5B6B85; --line:#E3E8F0; --bg:#EEF2F7;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --surface:#18233A; --ink:#F1F4FA; --muted:#9AA8C0; --line:#2A3858; --bg:#0F1828; color-scheme:dark; }
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font-family:'Baloo 2',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden;-webkit-tap-highlight-color:transparent}
+  #map{position:fixed;inset:0;z-index:0}
+  button{font-family:inherit}
+  button:focus-visible,input:focus-visible{outline:3px solid var(--navy);outline-offset:2px}
+  [hidden]{display:none !important}
+
+  /* Bovenbalk */
+  .top{position:fixed;z-index:1000;top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;right:12px;display:flex;gap:8px;justify-content:space-between;pointer-events:none}
+  .top > *{pointer-events:auto}
+  .chip{position:relative;background:var(--surface);color:var(--ink);border:0;border-radius:999px;padding:8px 14px;font-weight:700;font-size:15px;line-height:1.2;box-shadow:0 2px 10px rgba(19,41,75,.18);display:flex;align-items:center;gap:6px;cursor:pointer;max-width:70vw}
+  .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .round{width:44px;height:44px;justify-content:center;padding:0;font-size:20px;flex:none}
+  .badge{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--red);color:#fff;font-size:12px;line-height:20px;text-align:center;display:none}
+  .badge.show{display:block}
+
+  /* Onderpaneel */
+  .sheet{position:fixed;z-index:1000;left:0;right:0;bottom:0;background:var(--surface);border-radius:22px 22px 0 0;padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px);box-shadow:0 -4px 20px rgba(19,41,75,.15)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+  .stats{font-size:15px;color:var(--muted);line-height:1.3}
+  .stats b{color:var(--ink);font-size:18px}
+  .seg{display:flex;background:var(--bg);border-radius:999px;padding:3px;flex:none}
+  .seg button{border:0;background:transparent;color:var(--muted);font-weight:700;font-size:14px;padding:6px 12px;border-radius:999px;cursor:pointer}
+  .seg button.on{background:var(--navy);color:#fff}
+  .big{width:100%;height:64px;border:0;border-radius:18px;background:var(--yellow);color:var(--navy);font-weight:800;font-size:21px;line-height:1;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 4px 0 var(--yellow-dark);transition:transform .08s}
+  .big:active{transform:translateY(3px);box-shadow:0 1px 0 var(--yellow-dark)}
+  .big:disabled{opacity:.7}
+
+  /* Markers & popup */
+  .drop{background:none;border:0}
+  .drop svg{filter:drop-shadow(0 2px 2px rgba(0,0,0,.3))}
+  .me-dot{width:16px;height:16px;border-radius:50%;background:#2F80ED;border:3px solid #fff;box-shadow:0 0 0 6px rgba(47,128,237,.25)}
+  .leaflet-popup-content-wrapper{border-radius:16px;background:var(--surface);color:var(--ink)}
+  .leaflet-popup-tip{background:var(--surface)}
+  .leaflet-popup-content{margin:12px 14px;font-family:'Baloo 2',system-ui,sans-serif;min-width:190px}
+  .p-name{font-weight:800;font-size:18px;line-height:1.1}
+  .p-user{color:var(--muted);font-size:13px}
+  .p-time{color:var(--muted);font-size:14px;margin:4px 0 8px}
+  .p-pending{color:var(--muted);font-size:13px;margin-bottom:6px}
+  .heart{border:2px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:4px 12px;font-weight:700;font-size:15px;cursor:pointer}
+  .heart.on{background:#FFE4EA;border-color:#F06A8A;color:#B4234A}
+  .likers{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.3}
+  .del{display:block;margin-top:8px;border:0;background:none;color:#C0392B;font-weight:600;font-size:13px;padding:0;cursor:pointer;text-decoration:underline}
+
+  /* Velden & knoppen */
+  input.txt{width:100%;font-family:inherit;font-weight:600;font-size:17px;padding:11px 13px;border-radius:12px;border:2px solid var(--line);background:var(--bg);color:var(--ink)}
+  input.txt:focus{outline:none;border-color:var(--navy)}
+  .btn{border:0;border-radius:12px;background:var(--navy);color:#fff;font-weight:700;font-size:15px;padding:0 14px;cursor:pointer;white-space:nowrap;min-height:44px}
+  .btn.ghost{background:var(--bg);color:var(--ink)}
+  .btn.small{min-height:36px;padding:0 12px;font-size:14px}
+  .btn:disabled{opacity:.6}
+  .tag{font-size:14px;color:var(--muted);white-space:nowrap}
+
+  /* Inlogscherm */
+  .auth{position:fixed;inset:0;z-index:2500;background:var(--navy);display:flex;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 20px) 18px calc(env(safe-area-inset-bottom,0px) + 20px);overflow-y:auto}
+  .auth-in{width:100%;max-width:380px}
+  .logo{text-align:center;color:#fff;margin-bottom:18px}
+  .logo .drop-big{font-size:64px;line-height:1}
+  .logo h1{margin:4px 0 0;font-size:42px;line-height:1;font-weight:800;color:var(--yellow)}
+  .logo p{margin:6px 0 0;color:#C9D4E8;font-size:16px}
+  .auth-card{background:var(--surface);border-radius:22px;padding:16px}
+  .auth-card .seg{margin-bottom:14px}
+  .auth-card .seg button{flex:1;font-size:16px;padding:8px}
+  label.f{display:block;margin-bottom:12px}
+  label.f span{display:block;font-weight:700;font-size:15px;margin:0 0 4px 2px}
+  label.f small{display:block;color:var(--muted);font-size:13px;margin:4px 0 0 2px}
+  .msg{color:var(--red);font-weight:600;font-size:15px;min-height:1.3em;margin:0 0 8px 2px}
+
+  /* Profiel */
+  .profile{position:fixed;inset:0;z-index:1500;background:var(--bg);overflow-y:auto;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px calc(env(safe-area-inset-bottom,0px) + 28px);transform:translateY(100%);transition:transform .28s ease;visibility:hidden}
+  .profile.show{transform:none;visibility:visible}
+  .wrap{max-width:520px;margin:0 auto}
+  .pf-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+  .pf-head h2{margin:0;font-size:34px;line-height:1;font-weight:800;word-break:break-word}
+  .pf-head .handle{color:var(--muted);font-size:16px;margin-top:4px}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .tile{background:var(--surface);border-radius:16px;padding:12px 10px}
+  .tile b{display:block;font-size:30px;line-height:1;font-weight:800}
+  .tile span{font-size:14px;color:var(--muted);line-height:1.2}
+  .tile.hero{background:var(--yellow);color:var(--navy)}
+  .tile.hero span{color:var(--navy);opacity:.8}
+  .pf-last{color:var(--muted);font-size:15px;margin:10px 2px 0}
+  .box{background:var(--surface);border-radius:18px;padding:14px;margin-top:14px}
+  .box h3{margin:0 0 10px;font-size:19px;line-height:1.1}
+  .add{display:flex;gap:8px}
+  ul.list{list-style:none;margin:0;padding:0}
+  ul.list li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+  ul.list li:first-child{border-top:0}
+  #results li:first-child{margin-top:8px}
+  .dot{width:14px;height:18px;flex:none}
+  .who{flex:1;min-width:0;background:none;border:0;padding:0;text-align:left;color:var(--ink);font-family:inherit}
+  button.who{cursor:pointer}
+  .who b{display:block;font-size:17px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .who small{display:block;color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .x{border:0;background:none;color:var(--muted);font-size:20px;width:36px;height:36px;border-radius:50%;cursor:pointer;flex:none}
+  .empty{color:var(--muted);font-size:15px;margin:0}
+  .link{display:block;margin:20px auto 0;border:0;background:none;color:var(--muted);font-weight:600;font-size:15px;text-decoration:underline;cursor:pointer}
+
+  /* Profielfoto's */
+  .avatar{display:inline-block;border-radius:50%;object-fit:cover;flex:none;text-align:center;font-weight:800;color:#13294B;overflow:hidden}
+  .chip .avatar{margin-left:-6px}
+  .pf-id{display:flex;align-items:center;gap:14px;min-width:0}
+  .av-wrap{position:relative;border:0;padding:0;background:none;cursor:pointer;flex:none;border-radius:50%}
+  .av-wrap .avatar{border:3px solid var(--yellow)}
+  .av-wrap .cam{position:absolute;right:-2px;bottom:-2px;width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;font-size:15px;line-height:30px;text-align:center;border:2px solid var(--bg)}
+  .av-actions{margin:8px 0 0 2px}
+  .av-actions .link{display:inline;margin:0}
+
+  /* Foto bij pispoint */
+  .p-head{display:flex;align-items:center;gap:8px}
+  .p-photo{display:block;width:100%;height:150px;object-fit:cover;border-radius:12px;margin:0 0 8px;cursor:zoom-in;background:var(--bg)}
+  .p-photo-loading{height:150px;border-radius:12px;margin:0 0 8px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px}
+  .p-add{display:block;width:100%;margin:0 0 8px;border:2px dashed var(--line);background:transparent;color:var(--ink);border-radius:12px;padding:10px;font-weight:700;font-size:15px;cursor:pointer}
+  .p-links{display:flex;gap:14px;margin-top:8px}
+  .p-links .del{margin-top:0}
+  .p-links .edit{color:var(--muted)}
+  .viewer{position:fixed;inset:0;z-index:4000;background:rgba(0,0,0,.94);display:none;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 10px) 10px calc(env(safe-area-inset-bottom,0px) + 10px)}
+  .viewer.show{display:flex}
+  .viewer img{max-width:100%;max-height:100%;border-radius:8px}
+  .viewer button{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px}
+
+  .toast{position:fixed;z-index:3000;left:50%;top:calc(env(safe-area-inset-top,0px) + 66px);transform:translateX(-50%) translateY(-20px);opacity:0;background:var(--navy);color:#fff;padding:10px 16px;border-radius:999px;font-weight:700;transition:.25s;pointer-events:none;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion: reduce){ .toast,.big,.profile{transition:none} }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="top">
+  <button class="chip" id="nameChip" aria-label="Mijn profiel"><span id="chipAv">👤</span> <span id="nameLabel">…</span><span class="badge" id="badge"></span></button>
+  <button class="chip round" id="locateBtn" aria-label="Naar mijn locatie">📍</button>
+</div>
+
+<div class="sheet">
+  <div class="row">
+    <div class="stats" id="stats">Laden…</div>
+    <div class="seg" role="group" aria-label="Filter">
+      <button id="fAll" class="on">Vrienden</button>
+      <button id="fMe">Alleen ik</button>
+    </div>
+  </div>
+  <button class="big" id="registerBtn">💧 Pispoint registreren</button>
+</div>
+
+<!-- Profiel -->
+<div class="profile" id="profile" aria-hidden="true">
+  <div class="wrap">
+    <div class="pf-head">
+      <div class="pf-id">
+        <button class="av-wrap" id="pfAvatarBtn" aria-label="Profielfoto kiezen"><span id="pfAvatar"></span><span class="cam">📷</span></button>
+        <div><h2 id="pfName"></h2><div class="handle" id="pfHandle"></div></div>
+      </div>
+      <button class="chip round" id="pfClose" aria-label="Profiel sluiten">✕</button>
+    </div>
+    <div class="av-actions" id="avActions" hidden><button class="link" id="avRemove">Profielfoto verwijderen</button></div>
+
+    <div class="tiles" id="pfTiles"></div>
+    <p class="pf-last" id="pfLast"></p>
+
+    <div class="box" id="reqBox" hidden>
+      <h3>Vriendverzoeken</h3>
+      <ul class="list" id="reqList"></ul>
+    </div>
+
+    <div class="box">
+      <h3>Vrienden zoeken</h3>
+      <input class="txt" id="searchInput" placeholder="Gebruikersnaam of naam" autocomplete="off" autocapitalize="off">
+      <ul class="list" id="results"></ul>
+    </div>
+
+    <div class="box">
+      <h3 id="friendsTitle">Vrienden</h3>
+      <ul class="list" id="friendList"></ul>
+    </div>
+
+    <div class="box" id="sentBox" hidden>
+      <h3>Verstuurde verzoeken</h3>
+      <ul class="list" id="sentList"></ul>
+    </div>
+
+    <div class="box">
+      <h3>Je naam</h3>
+      <div class="add">
+        <input class="txt" id="fullNameInput" maxlength="40" autocomplete="name">
+        <button class="btn" id="fullNameSave">Opslaan</button>
+      </div>
+    </div>
+
+    <button class="link" id="logoutBtn">Uitloggen</button>
+  </div>
+</div>
+
+<!-- Inloggen / registreren -->
+<div class="auth" id="authScreen" hidden>
+  <div class="auth-in">
+    <div class="logo">
+      <div class="drop-big">💧</div>
+      <h1>Pispoint</h1>
+      <p>Hou bij waar jij en je vrienden wildplassen</p>
+    </div>
+    <div class="auth-card">
+      <div class="seg" role="tablist">
+        <button id="tabLogin" class="on" role="tab">Inloggen</button>
+        <button id="tabRegister" role="tab">Registreren</button>
+      </div>
+      <label class="f"><span>Gebruikersnaam</span>
+        <input class="txt" id="aUser" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="20">
+        <small id="userHint" hidden>3 tot 20 tekens: kleine letters, cijfers, _ of .</small>
+      </label>
+      <label class="f" id="nameField" hidden><span>Volledige naam</span>
+        <input class="txt" id="aName" autocomplete="name" maxlength="40">
+        <small>Zo vinden je vrienden je, bijvoorbeeld Jan de Vries</small>
+      </label>
+      <label class="f"><span>Wachtwoord</span>
+        <input class="txt" id="aPass" type="password" autocomplete="current-password">
+        <small id="passHint" hidden>Minstens 6 tekens</small>
+      </label>
+      <p class="msg" id="authMsg" role="alert"></p>
+      <button class="big" id="authBtn">Inloggen</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="photoFile" accept="image/*" hidden>
+<input type="file" id="avatarFile" accept="image/*" hidden>
+<div class="viewer" id="viewer"><img id="viewerImg" alt="Foto van het uitzicht"><button class="chip round" aria-label="Sluiten">✕</button></div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+// ====== VUL DIT IN (Firebase console > Projectinstellingen > Je apps > Web-app) ======
+const firebaseConfig = {
+  apiKey: "JOUW_API_KEY",
+  authDomain: "jouw-project.firebaseapp.com",
+  projectId: "jouw-project",
+  storageBucket: "jouw-project.appspot.com",
+  messagingSenderId: "000000000000",
+  appId: "1:000000000000:web:xxxxxxxxxxxx"
+};
+// =====================================================================================
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+const usersCol = db.collection('users');
+const col = db.collection('pispoints');
+const FV = firebase.firestore.FieldValue;
+const TS = firebase.firestore.Timestamp;
+
+// Gebruikersnamen worden intern omgezet naar een (niet-bestaand) e-mailadres voor Firebase Auth
+const DOMAIN = 'pispoint.app';
+const USER_OK = /^[a-z0-9_.]{3,20}$/;
+
+const $ = id => document.getElementById(id);
+let uid = null;
+let my = null;                 // mijn profiel-document
+let unsubMe = null;
+let people = {};               // uid -> { username, fullName }
+const loading = {};
+let pointListeners = {};       // uid -> unsubscribe
+let pointsByUid = {};
+let points = [];
+let filter = 'friends';
+let markers = {};
+let openId = null;
+let myMarker = null;
+let pendingFullName = null;
+let authMode = 'login';
+
+// ---------- Kaart ----------
+const map = L.map('map', { zoomControl: false }).setView([52.2, 5.3], 8);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+const layer = L.layerGroup().addTo(map);
+map.on('popupclose', () => { openId = null; });
+
+function colorFor(id){
+  if (id === uid) return '#F2C230';
+  let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return `hsl(${h} 65% 55%)`;
+}
+const dropSvg = (color, w = 28, h = 37) =>
+  `<svg viewBox="0 0 24 32" width="${w}" height="${h}" aria-hidden="true"><path d="M12 1.5S2.5 13.6 2.5 20.2a9.5 9.5 0 0 0 19 0C21.5 13.6 12 1.5 12 1.5z" fill="${color}" stroke="#13294B" stroke-width="1.6"/><ellipse cx="8.4" cy="19.5" rx="1.9" ry="3.4" fill="#fff" opacity=".6"/></svg>`;
+const dropIcon = color => L.divIcon({ className: 'drop', html: dropSvg(color), iconSize: [28, 37], iconAnchor: [14, 36], popupAnchor: [0, -32] });
+const fmt = d => d.toLocaleString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+// ---------- Helpers ----------
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2600);
+}
+function el(tag, cls, text){ const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+const firstName = n => (n || '').split(' ')[0];
+const cleanName = n => n.trim().replace(/\s+/g, ' ');
+const friends = () => (my && my.friends) || [];
+const pointsOf = id => points.filter(p => p.uid === id);
+
+function prefixes(s, max){ const out = []; for (let i = 2; i <= Math.min(s.length, max); i++) out.push(s.slice(0, i)); return out; }
+function searchKeysFor(username, fullName){
+  const f = fullName.toLowerCase();
+  const keys = new Set([...prefixes(username, 20), ...prefixes(f, 30), ...f.split(' ').flatMap(w => prefixes(w, 20))]);
+  return [...keys].slice(0, 150);
+}
+
+// Namen en profielfoto's van andere mensen ophalen (met cache)
+const toPerson = x => ({ username: x.username, fullName: x.fullName, photo: x.photo || null });
+function person(id){ return people[id] || { username: '…', fullName: '…', photo: null }; }
+function loadPeople(ids){
+  ids.filter(i => !people[i] && !loading[i]).forEach(i => {
+    loading[i] = usersCol.doc(i).get().then(d => {
+      const x = d.data();
+      people[i] = x ? toPerson(x) : { username: 'onbekend', fullName: 'Onbekend', photo: null };
+      render();
+    }).catch(() => {}).finally(() => { delete loading[i]; });
+  });
+}
+function avatarEl(id, size){
+  const p = person(id);
+  if (p.photo){
+    const img = el('img', 'avatar'); img.src = p.photo; img.alt = '';
+    img.style.width = img.style.height = size + 'px';
+    return img;
+  }
+  const s = el('span', 'avatar', (p.fullName || '?').trim().charAt(0).toUpperCase());
+  s.style.cssText = `width:${size}px;height:${size}px;line-height:${size}px;font-size:${Math.round(size * .45)}px;background:${colorFor(id)}`;
+  return s;
+}
+
+// Foto verkleinen in de browser. Dit haalt ook de GPS- en camera-gegevens uit de foto.
+function drawImage(file, maxSide, quality, square){
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight;
+      if (square){ const m = Math.min(sw, sh); sx = (sw - m) / 2; sy = (sh - m) / 2; sw = sh = m; }
+      const scale = Math.min(1, maxSide / Math.max(sw, sh));
+      const c = document.createElement('canvas');
+      c.width = Math.round(sw * scale); c.height = Math.round(sh * scale);
+      c.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('geen afbeelding')); };
+    img.src = url;
+  });
+}
+async function makeImage(file, maxSide, maxChars, square = false){
+  let side = maxSide, q = 0.8;
+  for (let i = 0; i < 6; i++){
+    const data = await drawImage(file, side, q, square);
+    if (data.length <= maxChars) return data;
+    side = Math.round(side * 0.82); q = Math.max(0.5, q - 0.07);
+  }
+  throw new Error('te groot');
+}
+
+// Foto's van pispoints staan apart en worden pas geladen als je een druppel opent
+const photos = db.collection('photos');
+const photoCache = {};
+function loadPhoto(id){
+  if (photoCache[id]) return;
+  photoCache[id] = 'loading';
+  photos.doc(id).get().then(d => {
+    photoCache[id] = d.exists ? d.data().data : 'none';
+    if (openId === id) render();
+  }).catch(() => { delete photoCache[id]; });
+}
+
+// ---------- Inloggen / registreren ----------
+function setAuthMode(m){
+  authMode = m;
+  $('tabLogin').classList.toggle('on', m === 'login');
+  $('tabRegister').classList.toggle('on', m === 'register');
+  $('nameField').hidden = m !== 'register';
+  $('userHint').hidden = m !== 'register';
+  $('passHint').hidden = m !== 'register';
+  $('aPass').autocomplete = m === 'register' ? 'new-password' : 'current-password';
+  $('authBtn').textContent = m === 'register' ? 'Account maken' : 'Inloggen';
+  $('authMsg').textContent = '';
+}
+function authError(e){
+  switch (e.code){
+    case 'auth/email-already-in-use': return 'Deze gebruikersnaam is al bezet';
+    case 'auth/invalid-credential':
+    case 'auth/invalid-login-credentials':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found': return 'Gebruikersnaam of wachtwoord klopt niet';
+    case 'auth/weak-password': return 'Kies een wachtwoord van minstens 6 tekens';
+    case 'auth/too-many-requests': return 'Te veel pogingen. Wacht even en probeer opnieuw';
+    case 'auth/network-request-failed': return 'Geen internetverbinding';
+    case 'auth/operation-not-allowed': return 'Inloggen met wachtwoord staat nog uit in Firebase';
+    default: return 'Er ging iets mis. Probeer het opnieuw';
+  }
+}
+async function submitAuth(){
+  const u = $('aUser').value.trim().toLowerCase();
+  const p = $('aPass').value;
+  const msg = $('authMsg');
+  if (!USER_OK.test(u)) return msg.textContent = 'Gebruikersnaam: 3 tot 20 tekens, kleine letters, cijfers, _ of .';
+  if (authMode === 'register'){
+    const n = cleanName($('aName').value);
+    if (!n) return msg.textContent = 'Vul je volledige naam in';
+    if (p.length < 6) return msg.textContent = 'Kies een wachtwoord van minstens 6 tekens';
+    pendingFullName = n;
+  } else if (!p) return msg.textContent = 'Vul je wachtwoord in';
+
+  $('authBtn').disabled = true; msg.textContent = '';
+  try{
+    if (authMode === 'register') await auth.createUserWithEmailAndPassword(`${u}@${DOMAIN}`, p);
+    else await auth.signInWithEmailAndPassword(`${u}@${DOMAIN}`, p);
+  } catch(e){
+    pendingFullName = null;
+    msg.textContent = authError(e);
+  } finally { $('authBtn').disabled = false; }
+}
+
+async function ensureProfile(user){
+  const ref = usersCol.doc(user.uid);
+  const d = await ref.get();
+  if (d.exists) return;
+  const username = user.email.split('@')[0];
+  const fullName = pendingFullName || username;
+  await ref.set({
+    username, fullName, fullNameLower: fullName.toLowerCase(),
+    searchKeys: searchKeysFor(username, fullName),
+    friends: [], requests: [], sent: [], createdAt: TS.now()
+  });
+}
+
+auth.onAuthStateChanged(async user => {
+  teardown();
+  if (!user){
+    uid = null; my = null;
+    $('authScreen').hidden = false;
+    $('nameLabel').textContent = 'Inloggen';
+    render();
+    return;
+  }
+  uid = user.uid;
+  $('authScreen').hidden = true;
+  $('aPass').value = '';
+  try { await ensureProfile(user); } catch(e){ console.error(e); }
+  pendingFullName = null;
+  unsubMe = usersCol.doc(uid).onSnapshot(d => {
+    my = d.data() || null;
+    if (!my) return;
+    people[uid] = toPerson(my);
+    $('nameLabel').textContent = firstName(my.fullName);
+    $('chipAv').replaceChildren(avatarEl(uid, 28));
+    loadPeople([...my.friends, ...my.requests, ...my.sent]);
+    syncPointListeners();
+    updateBadge();
+    render();
+  }, err => console.error(err));
+  locate();
+});
+
+function teardown(){
+  if (unsubMe) unsubMe(); unsubMe = null;
+  Object.values(pointListeners).forEach(u => u());
+  pointListeners = {}; pointsByUid = {}; points = [];
+  closeProfile();
+}
+
+// Eén live-verbinding per persoon (jijzelf + elke vriend)
+function syncPointListeners(){
+  const want = new Set([uid, ...friends()]);
+  for (const id of Object.keys(pointListeners)){
+    if (!want.has(id)){ pointListeners[id](); delete pointListeners[id]; delete pointsByUid[id]; }
+  }
+  for (const id of want){
+    if (pointListeners[id]) continue;
+    pointListeners[id] = col.where('uid', '==', id).onSnapshot({ includeMetadataChanges: true }, snap => {
+      pointsByUid[id] = snap.docs.map(d => {
+        const x = d.data();
+        return {
+          id: d.id, uid: x.uid, lat: x.lat, lng: x.lng, likes: x.likes || [], hasPhoto: !!x.hasPhoto,
+          createdAt: x.createdAt ? x.createdAt.toDate() : new Date(),
+          pending: d.metadata.hasPendingWrites
+        };
+      });
+      points = Object.values(pointsByUid).flat().sort((a, b) => a.createdAt - b.createdAt);
+      render();
+    }, err => {
+      console.warn('Geen toegang tot punten van', id, err.code);
+      delete pointListeners[id];
+    });
+  }
+}
+
+// ---------- Kaart tekenen ----------
+function popupFor(p){
+  const owner = person(p.uid);
+  loadPeople(p.likes);
+  const mine = p.uid === uid;
+  const box = el('div');
+  const head = el('div', 'p-head');
+  const txt = el('div');
+  txt.append(el('div', 'p-name', mine ? `${owner.fullName} (jij)` : owner.fullName), el('div', 'p-user', '@' + owner.username));
+  head.append(avatarEl(p.uid, 36), txt);
+  box.append(head);
+  box.append(el('div', 'p-time', fmt(p.createdAt)));
+  if (p.pending) box.append(el('div', 'p-pending', '⏳ Wordt verstuurd zodra je bereik hebt'));
+
+  if (p.hasPhoto){
+    loadPhoto(p.id);
+    const src = photoCache[p.id];
+    if (src && src !== 'loading' && src !== 'none'){
+      const img = el('img', 'p-photo'); img.src = src; img.alt = 'Foto van het uitzicht';
+      img.onclick = () => openViewer(src);
+      box.append(img);
+    } else if (src !== 'none') box.append(el('div', 'p-photo-loading', 'Foto laden…'));
+  } else if (mine){
+    box.append(button('p-add', '📷 Foto van het uitzicht toevoegen', () => pickPhoto(p.id)));
+  }
+  const liked = p.likes.includes(uid);
+  const btn = el('button', 'heart' + (liked ? ' on' : ''), `${liked ? '❤️' : '🤍'} ${p.likes.length}`);
+  btn.onclick = () => toggleLike(p.id, liked);
+  box.append(btn);
+  if (p.likes.length) box.append(el('div', 'likers', 'Geliked door ' + p.likes.map(i => i === uid ? 'jij' : person(i).fullName).join(', ')));
+  if (mine){
+    const links = el('div', 'p-links');
+    if (p.hasPhoto){
+      links.append(button('del edit', 'Foto vervangen', () => pickPhoto(p.id)));
+      links.append(button('del edit', 'Foto weghalen', () => removePhoto(p.id)));
+    }
+    links.append(button('del', 'Verwijderen', () => removePoint(p)));
+    box.append(links);
+  }
+  return box;
+}
+
+function render(){
+  layer.clearLayers(); markers = {};
+  if (!uid){ $('stats').textContent = ''; return; }
+  const list = filter === 'me' ? pointsOf(uid) : points;
+  for (const p of list){
+    const m = L.marker([p.lat, p.lng], { icon: dropIcon(colorFor(p.uid)) })
+      .bindPopup(() => popupFor(p), { closeButton: false })
+      .on('popupopen', () => { openId = p.id; });
+    m.addTo(layer); markers[p.id] = m;
+  }
+  const mine = pointsOf(uid).length;
+  const nf = friends().length;
+  const ofFriends = points.length - mine;
+  $('stats').innerHTML = nf
+    ? `<b>${mine}</b> van jou<br>${ofFriends} van ${nf} ${nf === 1 ? 'vriend' : 'vrienden'}`
+    : `<b>${mine}</b> van jou<br>Voeg vrienden toe via je profiel`;
+  if (openId && markers[openId]) markers[openId].openPopup();
+  renderProfile();
+}
+
+// ---------- Profiel ----------
+function personRow(id, sub, actions, onTap){
+  const li = el('li');
+  const dot = avatarEl(id, 40);
+  const p = person(id);
+  const who = el(onTap ? 'button' : 'div', 'who');
+  who.append(el('b', null, p.fullName), el('small', null, `@${p.username}${sub ? ', ' + sub : ''}`));
+  if (onTap) who.onclick = onTap;
+  li.append(dot, who, ...actions);
+  return li;
+}
+function button(cls, text, fn, label){ const b = el('button', cls, text); b.onclick = fn; if (label) b.setAttribute('aria-label', label); return b; }
+
+function renderProfile(){
+  if (!my || !$('profile').classList.contains('show')) return;
+  $('pfName').textContent = my.fullName;
+  $('pfHandle').textContent = '@' + my.username;
+  $('pfAvatar').replaceChildren(avatarEl(uid, 84));
+  $('avActions').hidden = !my.photo;
+
+  const mine = pointsOf(uid);
+  const likesIn = mine.reduce((n, p) => n + p.likes.filter(l => l !== uid).length, 0);
+  const now = new Date();
+  const thisMonth = mine.filter(p => p.createdAt.getMonth() === now.getMonth() && p.createdAt.getFullYear() === now.getFullYear()).length;
+  const tiles = $('pfTiles'); tiles.innerHTML = '';
+  [[mine.length, 'pispoints', 'hero'], [likesIn, likesIn === 1 ? 'like ontvangen' : 'likes ontvangen'], [thisMonth, 'deze maand']]
+    .forEach(([n, label, cls]) => { const t = el('div', 'tile' + (cls ? ' ' + cls : '')); t.append(el('b', null, n), el('span', null, label)); tiles.append(t); });
+  const last = mine[mine.length - 1];
+  $('pfLast').textContent = last ? `Laatste pispoint: ${fmt(last.createdAt)}` : 'Nog geen pispoints. Tijd voor je eerste!';
+
+  // Verzoeken
+  $('reqBox').hidden = !my.requests.length;
+  const rl = $('reqList'); rl.innerHTML = '';
+  my.requests.forEach(id => rl.append(personRow(id, 'wil je vriend worden', [
+    button('btn small', 'Accepteren', () => acceptRequest(id)),
+    button('x', '✕', () => declineRequest(id), 'Verzoek weigeren')
+  ])));
+
+  // Vrienden
+  $('friendsTitle').textContent = `Vrienden (${my.friends.length})`;
+  const fl = $('friendList'); fl.innerHTML = '';
+  if (!my.friends.length) fl.append(el('p', 'empty', 'Nog geen vrienden. Zoek hierboven op gebruikersnaam of naam en stuur een verzoek.'));
+  [...my.friends].sort((a, b) => person(a).fullName.localeCompare(person(b).fullName, 'nl')).forEach(id => {
+    const n = pointsOf(id).length;
+    fl.append(personRow(id, `${n} ${n === 1 ? 'pispoint' : 'pispoints'}`,
+      [button('x', '✕', () => removeFriend(id), 'Verwijderen als vriend')], () => showOnMap(id)));
+  });
+
+  // Verstuurd
+  $('sentBox').hidden = !my.sent.length;
+  const sl = $('sentList'); sl.innerHTML = '';
+  my.sent.forEach(id => sl.append(personRow(id, 'wacht op antwoord', [button('btn small ghost', 'Intrekken', () => cancelRequest(id))])));
+
+  renderResults();
+}
+
+function updateBadge(){
+  const n = my ? my.requests.length : 0, b = $('badge');
+  b.textContent = n; b.classList.toggle('show', n > 0);
+}
+function openProfile(){
+  if (!my) return;
+  $('fullNameInput').value = my.fullName;
+  $('profile').classList.add('show'); $('profile').setAttribute('aria-hidden', 'false');
+  renderProfile();
+}
+function closeProfile(){ $('profile').classList.remove('show'); $('profile').setAttribute('aria-hidden', 'true'); }
+
+function showOnMap(id){
+  const pts = pointsOf(id);
+  if (!pts.length) return toast(`${firstName(person(id).fullName)} heeft nog geen pispoints`);
+  closeProfile();
+  filter = 'friends'; setFilterButtons(); render();
+  if (pts.length === 1) map.flyTo([pts[0].lat, pts[0].lng], 16);
+  else map.flyToBounds(L.latLngBounds(pts.map(p => [p.lat, p.lng])), { padding: [60, 60], maxZoom: 16 });
+}
+
+// ---------- Zoeken ----------
+let results = [];
+let searchTimer = null;
+$('searchInput').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 300);
+});
+async function runSearch(){
+  const q = cleanName($('searchInput').value).toLowerCase().replace(/^@/, '');
+  if (q.length < 2){ results = []; renderResults(); return; }
+  try{
+    const snap = await usersCol.where('searchKeys', 'array-contains', q.slice(0, 30)).limit(15).get();
+    results = snap.docs.filter(d => d.id !== uid).map(d => {
+      people[d.id] = toPerson(d.data()); return d.id;
+    });
+    if (!results.length) results = ['none'];
+  } catch(e){ console.error(e); results = ['error']; }
+  renderResults();
+}
+function renderResults(){
+  const ul = $('results'); ul.innerHTML = '';
+  if (results[0] === 'none') return ul.append(el('p', 'empty', 'Niemand gevonden'));
+  if (results[0] === 'error') return ul.append(el('p', 'empty', 'Zoeken lukt niet, check je verbinding'));
+  results.forEach(id => {
+    let action;
+    if (my.friends.includes(id)) action = el('span', 'tag', 'Vrienden');
+    else if (my.sent.includes(id)) action = el('span', 'tag', 'Verstuurd');
+    else if (my.requests.includes(id)) action = button('btn small', 'Accepteren', () => acceptRequest(id));
+    else action = button('btn small', 'Toevoegen', () => sendRequest(id));
+    ul.append(personRow(id, '', [action]));
+  });
+}
+
+// ---------- Vriendacties ----------
+function commit(b, ok, fail){ b.commit().catch(e => { console.error(e); toast(fail); }); if (ok) toast(ok); }
+function sendRequest(id){
+  const b = db.batch();
+  b.update(usersCol.doc(id), { requests: FV.arrayUnion(uid) });
+  b.update(usersCol.doc(uid), { sent: FV.arrayUnion(id) });
+  commit(b, `Verzoek gestuurd naar ${firstName(person(id).fullName)}`, 'Verzoek sturen mislukt');
+}
+function acceptRequest(id){
+  const b = db.batch();
+  b.update(usersCol.doc(uid), { requests: FV.arrayRemove(id), friends: FV.arrayUnion(id) });
+  b.update(usersCol.doc(id), { sent: FV.arrayRemove(uid), friends: FV.arrayUnion(uid) });
+  commit(b, `${firstName(person(id).fullName)} is nu je vriend 🎉`, 'Accepteren mislukt');
+}
+function declineRequest(id){
+  const b = db.batch();
+  b.update(usersCol.doc(uid), { requests: FV.arrayRemove(id) });
+  b.update(usersCol.doc(id), { sent: FV.arrayRemove(uid) });
+  commit(b, null, 'Weigeren mislukt');
+}
+function cancelRequest(id){
+  const b = db.batch();
+  b.update(usersCol.doc(uid), { sent: FV.arrayRemove(id) });
+  b.update(usersCol.doc(id), { requests: FV.arrayRemove(uid) });
+  commit(b, null, 'Intrekken mislukt');
+}
+function removeFriend(id){
+  if (!confirm(`${person(id).fullName} verwijderen als vriend? Jullie zien elkaars pispoints dan niet meer.`)) return;
+  const b = db.batch();
+  b.update(usersCol.doc(uid), { friends: FV.arrayRemove(id) });
+  b.update(usersCol.doc(id), { friends: FV.arrayRemove(uid) });
+  commit(b, null, 'Verwijderen mislukt');
+}
+function saveFullName(){
+  const n = cleanName($('fullNameInput').value);
+  if (!n) return toast('Vul je naam in');
+  usersCol.doc(uid).update({ fullName: n, fullNameLower: n.toLowerCase(), searchKeys: searchKeysFor(my.username, n) })
+    .catch(() => toast('Opslaan mislukt'));
+  toast('Naam opgeslagen');
+}
+
+// ---------- Pispoints ----------
+function toggleLike(id, liked){
+  openId = id;
+  col.doc(id).update({ likes: liked ? FV.arrayRemove(uid) : FV.arrayUnion(uid) }).catch(() => toast('Like opslaan mislukt'));
+}
+function removePoint(p){
+  if (!confirm('Dit pispoint verwijderen?')) return;
+  openId = null; map.closePopup();
+  const b = db.batch();
+  if (p.hasPhoto) b.delete(photos.doc(p.id));
+  b.delete(col.doc(p.id));
+  b.commit().catch(() => toast('Verwijderen mislukt'));
+  toast('Pispoint verwijderd');
+}
+
+// ---------- Foto bij pispoint ----------
+let photoTarget = null;
+function pickPhoto(id){ photoTarget = id; $('photoFile').value = ''; $('photoFile').click(); }
+$('photoFile').onchange = async e => {
+  const file = e.target.files[0], id = photoTarget;
+  if (!file || !id) return;
+  toast('Foto verwerken…');
+  try{
+    const data = await makeImage(file, 1280, 700000);
+    photoCache[id] = data;
+    const b = db.batch();
+    b.set(photos.doc(id), { uid, data });
+    b.update(col.doc(id), { hasPhoto: true });
+    b.commit().catch(err => { console.error(err); toast('Foto opslaan mislukt'); });
+    openId = id; render();
+    toast('Foto toegevoegd 📷');
+  } catch(err){ toast('Deze foto kan niet worden gebruikt'); }
+};
+function removePhoto(id){
+  if (!confirm('Foto weghalen?')) return;
+  delete photoCache[id];
+  const b = db.batch();
+  b.delete(photos.doc(id));
+  b.update(col.doc(id), { hasPhoto: false });
+  b.commit().catch(() => toast('Weghalen mislukt'));
+  openId = id;
+}
+function openViewer(src){ $('viewerImg').src = src; $('viewer').classList.add('show'); }
+$('viewer').onclick = () => $('viewer').classList.remove('show');
+
+// ---------- Profielfoto ----------
+$('pfAvatarBtn').onclick = () => { $('avatarFile').value = ''; $('avatarFile').click(); };
+$('avatarFile').onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try{
+    const data = await makeImage(file, 256, 60000, true);
+    usersCol.doc(uid).update({ photo: data }).catch(() => toast('Profielfoto opslaan mislukt'));
+    toast('Profielfoto bijgewerkt');
+  } catch(err){ toast('Deze foto kan niet worden gebruikt'); }
+};
+$('avRemove').onclick = () => {
+  if (!confirm('Profielfoto verwijderen?')) return;
+  usersCol.doc(uid).update({ photo: FV.delete() }).catch(() => toast('Verwijderen mislukt'));
+};
+function getPosition(){
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error('geen gps'));
+    navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  });
+}
+async function register(){
+  const btn = $('registerBtn');
+  btn.disabled = true; btn.textContent = '📡 Locatie zoeken…';
+  try{
+    const pos = await getPosition();
+    const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+    const ref = col.doc();
+    openId = ref.id;
+    ref.set({ uid, lat, lng, accuracy: Math.round(accuracy), createdAt: TS.now(), likes: [] })
+      .catch(() => toast('Opslaan mislukt'));
+    map.flyTo([lat, lng], 17);
+    if (navigator.vibrate) navigator.vibrate(60);
+    toast('Pispoint geregistreerd 💧');
+  } catch(e){
+    toast(e.code === 1 ? 'Geef de app toegang tot je locatie' : 'Locatie niet gevonden, probeer opnieuw');
+  } finally {
+    btn.disabled = false; btn.textContent = '💧 Pispoint registreren';
+  }
+}
+async function locate(){
+  try{
+    const pos = await getPosition();
+    const ll = [pos.coords.latitude, pos.coords.longitude];
+    if (!myMarker) myMarker = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [16,16], iconAnchor: [8,8] }), interactive: false }).addTo(map);
+    else myMarker.setLatLng(ll);
+    map.flyTo(ll, 16);
+  } catch(e){ toast('Locatie niet beschikbaar'); }
+}
+
+// ---------- Knoppen ----------
+function setFilterButtons(){
+  $('fAll').classList.toggle('on', filter === 'friends');
+  $('fMe').classList.toggle('on', filter === 'me');
+}
+$('tabLogin').onclick = () => setAuthMode('login');
+$('tabRegister').onclick = () => setAuthMode('register');
+$('authBtn').onclick = submitAuth;
+['aUser', 'aName', 'aPass'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); }));
+$('registerBtn').onclick = () => uid && register();
+$('locateBtn').onclick = locate;
+$('nameChip').onclick = openProfile;
+$('pfClose').onclick = closeProfile;
+$('fullNameSave').onclick = saveFullName;
+$('logoutBtn').onclick = () => { if (confirm('Uitloggen?')) auth.signOut(); };
+$('fAll').onclick = () => { filter = 'friends'; setFilterButtons(); render(); };
+$('fMe').onclick  = () => { filter = 'me'; setFilterButtons(); render(); };
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('viewer').classList.contains('show')) $('viewer').classList.remove('show');
+  else closeProfile();
+});
+</script>
+</body>
+</html>
