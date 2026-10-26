@@ -77,13 +77,21 @@ service cloud.firestore {
 
     // ---------- Pispoints ----------
     match /pispoints/{id} {
+      function validExtras() {
+        return request.resource.data.get('rating', 0) is int
+          && request.resource.data.get('rating', 0) >= 0
+          && request.resource.data.get('rating', 0) <= 5
+          && request.resource.data.get('note', '') is string
+          && request.resource.data.get('note', '').size() <= 280;
+      }
       function canSee() { return resource.data.uid == me() || resource.data.uid in myFriends(); }
 
       allow read: if signedIn() && canSee();
 
       allow create: if signedIn()
         && request.resource.data.uid == me()
-        && request.resource.data.keys().hasOnly(['uid','lat','lng','accuracy','createdAt','likes','hasPhoto'])
+        && request.resource.data.keys().hasOnly(['uid','lat','lng','accuracy','createdAt','likes','hasPhoto','country','rating','note'])
+        && validExtras()
         && request.resource.data.lat is number
         && request.resource.data.lng is number
         && request.resource.data.createdAt is timestamp
@@ -95,10 +103,13 @@ service cloud.firestore {
         && onlyMe('likes')
         && request.resource.data.likes.size() <= 500;
 
-      // Eigenaar: foto toevoegen of weghalen
+      // Eigenaar: foto toevoegen of weghalen, land invullen
       allow update: if signedIn() && resource.data.uid == me()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasPhoto'])
-        && request.resource.data.hasPhoto is bool;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasPhoto','country','rating','note'])
+        && validExtras()
+        && request.resource.data.get('hasPhoto', false) is bool
+        && request.resource.data.get('country', '') is string
+        && request.resource.data.get('country', '').size() <= 3;
 
       allow delete: if signedIn() && resource.data.uid == me();
     }
@@ -113,7 +124,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['uid','data'])
         && request.resource.data.data is string
         && request.resource.data.data.size() <= 750000
-        && get(/databases/$(database)/documents/pispoints/$(id)).data.uid == me();
+        && getAfter(/databases/$(database)/documents/pispoints/$(id)).data.uid == me();
 
       allow delete: if signedIn() && resource.data.uid == me();
     }

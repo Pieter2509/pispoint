@@ -1,0 +1,121 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function myFriends() { return get(/databases/$(database)/documents/users/$(me())).data.friends; }
+
+    // Wat is er aan een lijstveld toegevoegd of uit verwijderd?
+    function added(f)   { return request.resource.data[f].toSet().difference(resource.data[f].toSet()); }
+    function removed(f) { return resource.data[f].toSet().difference(request.resource.data[f].toSet()); }
+    // Alleen je eigen uid mag erbij of eraf
+    function onlyMe(f)  { return added(f).union(removed(f)).hasOnly([me()]); }
+
+    function validName() {
+      return request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.fullName.size() <= 40
+        && request.resource.data.fullNameLower == request.resource.data.fullName.lower()
+        && request.resource.data.searchKeys is list
+        && request.resource.data.searchKeys.size() <= 150
+        && (!('photo' in request.resource.data) || (request.resource.data.photo is string && request.resource.data.photo.size() <= 80000));
+    }
+
+    // ---------- Profielen ----------
+    match /users/{uid} {
+      allow read: if signedIn();
+
+      allow create: if signedIn() && uid == me()
+        && request.resource.data.keys().hasOnly(['username','fullName','fullNameLower','searchKeys','photo','friends','requests','sent','createdAt'])
+        && (request.resource.data.username == request.auth.token.email.split('@')[0]
+            || (request.auth.token.email.split('@')[0].matches('h-[0-9a-f]{40}')
+                && request.resource.data.username is string
+                && request.resource.data.username.size() <= 40
+                && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == me()))
+        && validName()
+        && request.resource.data.friends == []
+        && request.resource.data.requests == []
+        && request.resource.data.sent == [];
+
+      // Je eigen profiel: naam aanpassen, verzoeken afhandelen.
+      // Iemand als vriend toevoegen kan alleen als die jou een verzoek stuurde.
+      allow update: if signedIn() && uid == me()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName','fullNameLower','searchKeys','photo','friends','requests','sent'])
+        && validName()
+        && added('requests').size() == 0
+        && added('friends').hasOnly(resource.data.requests)
+        && request.resource.data.sent.size() <= 300;
+
+      // Profiel van een ander: je mag alleen jezelf toevoegen of verwijderen.
+      // Jezelf bij hun vrienden zetten mag alleen als zij jou een verzoek stuurden.
+      allow update: if signedIn() && uid != me()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends','requests','sent'])
+        && onlyMe('friends') && onlyMe('requests') && onlyMe('sent')
+        && added('sent').size() == 0
+        && (added('friends').size() == 0 || me() in resource.data.sent)
+        && request.resource.data.requests.size() <= 300;
+
+      allow delete: if false;
+    }
+
+    // ---------- Privé: meldingsinstellingen en apparaten (alleen voor jezelf) ----------
+    match /private/{uid}/{rest=**} {
+      allow read, write: if signedIn() && uid == me();
+    }
+
+    // ---------- Gebruikersnamen met speciale tekens ----------
+    match /usernames/{name} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == me()
+        && request.auth.token.email.split('@')[0].matches('h-[0-9a-f]{40}')
+        && getAfter(/databases/$(database)/documents/users/$(me())).data.username == name;
+      allow update, delete: if false;
+    }
+
+    // ---------- Pispoints ----------
+    match /pispoints/{id} {
+      function canSee() { return resource.data.uid == me() || resource.data.uid in myFriends(); }
+
+      allow read: if signedIn() && canSee();
+
+      allow create: if signedIn()
+        && request.resource.data.uid == me()
+        && request.resource.data.keys().hasOnly(['uid','lat','lng','accuracy','createdAt','likes','hasPhoto'])
+        && request.resource.data.lat is number
+        && request.resource.data.lng is number
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.likes == [];
+
+      // Liken: alleen je eigen like toevoegen of weghalen, en alleen bij punten die je mag zien
+      allow update: if signedIn() && canSee()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+        && onlyMe('likes')
+        && request.resource.data.likes.size() <= 500;
+
+      // Eigenaar: foto toevoegen of weghalen
+      allow update: if signedIn() && resource.data.uid == me()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasPhoto'])
+        && request.resource.data.hasPhoto is bool;
+
+      allow delete: if signedIn() && resource.data.uid == me();
+    }
+
+    // ---------- Foto's bij pispoints (document-id = id van het pispoint) ----------
+    match /photos/{id} {
+      allow read: if signedIn() && (resource.data.uid == me() || resource.data.uid in myFriends());
+
+      allow create, update: if signedIn()
+        && request.resource.data.uid == me()
+        && (resource == null || resource.data.uid == me())
+        && request.resource.data.keys().hasOnly(['uid','data'])
+        && request.resource.data.data is string
+        && request.resource.data.data.size() <= 750000
+        && get(/databases/$(database)/documents/pispoints/$(id)).data.uid == me();
+
+      allow delete: if signedIn() && resource.data.uid == me();
+    }
+  }
+}
