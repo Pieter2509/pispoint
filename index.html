@@ -86,6 +86,7 @@
   input.txt:focus{outline:none;border-color:var(--navy)}
   .btn{border:0;border-radius:12px;background:var(--navy);color:#fff;font-weight:700;font-size:15px;padding:0 14px;cursor:pointer;white-space:nowrap;min-height:44px}
   .btn.ghost{background:var(--bg);color:var(--ink)}
+  @media (prefers-color-scheme: dark){ .btn:not(.ghost){background:#3D5A8A} }
   .btn.small{min-height:36px;padding:0 12px;font-size:14px}
   .btn:disabled{opacity:.6}
   .tag{font-size:14px;color:var(--muted);white-space:nowrap}
@@ -226,7 +227,8 @@
   .comp-label{margin:0 0 6px;font-weight:700;font-size:15px}
   .with-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;-webkit-overflow-scrolling:touch}
   .wchip{display:flex;align-items:center;gap:6px;flex:none;border:2px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:3px 12px 3px 3px;font:700 14px 'Baloo 2',system-ui,sans-serif;cursor:pointer}
-  .wchip.on{border-color:var(--navy);background:var(--navy);color:#fff}
+  .wchip.on{border-color:#F2C230;background:#F2C230;color:#13294B}
+  .wchip.on::after{content:'✓';font-weight:800;margin-left:2px}
   .p-with{display:flex;align-items:center;gap:6px;font-size:14px;margin:-2px 0 8px}
   .p-with .avs{display:flex}
   .p-with .avs .avatar{margin-left:-6px;border:2px solid var(--surface)}
@@ -234,11 +236,16 @@
 
   /* Kleurkeuze */
   .colors{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-  .swatch{width:44px;height:52px;border:2px solid transparent;border-radius:12px;background:var(--bg);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
-  .swatch.on{border-color:var(--navy)}
-  .swatch.custom{position:relative;overflow:hidden}
-  .swatch.custom input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:0;padding:0}
-  .swatch .plus{position:absolute;right:3px;bottom:2px;font-size:12px;font-weight:800;color:var(--ink)}
+  /* Altijd een lichte achtergrond, zodat ook een zwarte druppel goed zichtbaar is */
+  .swatch{position:relative;width:46px;height:54px;border:0;border-radius:14px;background:#EEF2F7;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+  .swatch.on{outline:3px solid #F2C230;outline-offset:2px}
+  .swatch.on::after{content:'✓';position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:#F2C230;color:#13294B;font-size:12px;font-weight:800;line-height:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .swatch.custom{background:conic-gradient(#E0475B,#F28C28,#F2C230,#3BAA5C,#2BB3C0,#3D7BEA,#8E5BD9,#E84FA0,#E0475B)}
+  .swatch.custom .inner{width:34px;height:42px;border-radius:10px;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#13294B;line-height:1}
+  .swatch.custom input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:0;padding:0;-webkit-appearance:none;appearance:none}
+  .color-now{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:14px;color:var(--muted)}
+  .color-now b{color:var(--ink);font-family:ui-monospace,Menlo,monospace;font-size:13px;display:inline-block;min-width:7.5ch}
+  #colorPreview{display:inline-flex;width:18px;height:24px}
 
   /* Meldingen */
   .toggle{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:16px;cursor:pointer}
@@ -373,6 +380,7 @@
         </div>
 
         <h4>Kleur van je druppel</h4>
+        <div class="color-now"><span id="colorPreview"></span><span>Nu: <b id="colorHex"></b></span></div>
         <div class="colors" id="colorChoices"></div>
 
         <h4>Profielfoto</h4>
@@ -960,7 +968,7 @@ function render(){
     if (groupsByKey[key].points.length > 1) openList = key;
     markers[key].openPopup();
   }
-  renderProfile();
+  if (!colorPicking) renderProfile();
   renderFriend();
 }
 
@@ -1585,9 +1593,12 @@ function friendCelebration(friendId, x){
 
 // ---------- Kleur van je druppel ----------
 const PRESET_COLORS = ['#F2C230', '#F28C28', '#E0475B', '#E84FA0', '#8E5BD9', '#3D7BEA', '#2BB3C0', '#3BAA5C', '#8B5A2B', '#1E1E1E'];
+const myColor = () => ((my && my.color) || '#F2C230').toUpperCase();
+let colorPicking = false;   // kleurenkiezer staat open: niet opnieuw opbouwen
 function renderColors(){
   const box = $('colorChoices'); if (!box || !my) return;
-  const current = (my.color || '#F2C230').toUpperCase();
+  const current = myColor();
+  if (colorPicking && $('customSwatch')){ paintCustom(current); paintPreview(current); return; }
   box.innerHTML = '';
   PRESET_COLORS.forEach(c => {
     const b = el('button', 'swatch' + (c.toUpperCase() === current ? ' on' : ''));
@@ -1596,17 +1607,57 @@ function renderColors(){
     b.onclick = () => saveColor(c);
     box.append(b);
   });
-  // Eigen kleur: alle kleuren mogelijk
-  const isCustom = !PRESET_COLORS.some(c => c.toUpperCase() === current);
-  const wrap = el('label', 'swatch custom' + (isCustom ? ' on' : ''));
-  wrap.innerHTML = dropSvg(isCustom ? current : '#FFFFFF', 24, 32) + '<span class="plus">+</span>';
+  // Eigen kleur: alle kleuren mogelijk via de kleurenkiezer van je telefoon
+  const wrap = el('label', 'swatch custom');
+  wrap.id = 'customSwatch';
   wrap.title = 'Eigen kleur kiezen';
+  const inner = el('span', 'inner'); inner.id = 'customInner';
   const input = document.createElement('input');
   input.type = 'color'; input.value = current.toLowerCase();
   input.setAttribute('aria-label', 'Eigen kleur kiezen');
-  input.onchange = e => saveColor(e.target.value);
-  wrap.append(input);
+  // Tijdens het schuiven alleen een voorbeeld tonen; opslaan als de kiezer sluit
+  input.addEventListener('click', () => { colorPicking = true; });
+  input.addEventListener('input', e => { colorPicking = true; clearTimeout(endPickSoon.t); previewColor(e.target.value); });
+  input.addEventListener('change', e => { commitColor(e.target.value); endPickSoon(); });
+  input.addEventListener('blur', endPickSoon);
+  wrap.append(inner, input);
   box.append(wrap);
+  paintCustom(current);
+  paintPreview(current);
+}
+function paintCustom(c){
+  const isCustom = !PRESET_COLORS.some(p => p.toUpperCase() === c);
+  $('customSwatch').classList.toggle('on', isCustom);
+  $('customInner').innerHTML = isCustom ? dropSvg(c, 22, 29) : '+';
+}
+function paintPreview(c){
+  $('colorPreview').innerHTML = dropSvg(c, 18, 24);
+  $('colorHex').textContent = c;
+}
+// Voorbeeld zonder iets opnieuw op te bouwen (anders sluit de kiezer)
+// Op de iPhone sluit de kiezer zodra er iets op de pagina verspringt.
+// Daarom tijdens het schuiven alleen het kleine voorbeeld bijwerken; de rest pas bij het sluiten.
+function previewColor(c){
+  c = c.toUpperCase();
+  if (!/^#[0-9A-F]{6}$/.test(c)) return;
+  paintPreview(c);
+}
+// Eigen kleur opslaan zonder de pagina om te bouwen (de kiezer kan nog open staan)
+function commitColor(c){
+  c = c.toUpperCase();
+  if (!/^#[0-9A-F]{6}$/.test(c) || c === myColor()) return;
+  my.color = c; people[uid] = toPerson(my);
+  document.querySelectorAll('#colorChoices .swatch:not(.custom)').forEach(b => b.classList.remove('on'));
+  paintCustom(c); paintPreview(c);
+  $('chipAv').replaceChildren(avatarEl(uid, 28));
+  usersCol.doc(uid).update({ color: c })
+    .then(() => toast('Kleur opgeslagen'))
+    .catch(() => toast('Kleur opslaan mislukt'));
+}
+// Pas als de kiezer echt dicht is de kaart en het profiel bijwerken
+function endPickSoon(){
+  clearTimeout(endPickSoon.t);
+  endPickSoon.t = setTimeout(() => { colorPicking = false; render(); }, 1200);
 }
 function saveColor(c){
   c = c.toUpperCase();
@@ -1614,7 +1665,9 @@ function saveColor(c){
   my.color = c; people[uid] = toPerson(my);
   $('chipAv').replaceChildren(avatarEl(uid, 28));
   render(); renderColors();
-  usersCol.doc(uid).update({ color: c }).catch(() => toast('Kleur opslaan mislukt'));
+  usersCol.doc(uid).update({ color: c })
+    .then(() => toast('Kleur opgeslagen'))
+    .catch(() => toast('Kleur opslaan mislukt'));
 }
 
 // ---------- Pushmeldingen ----------
