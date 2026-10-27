@@ -104,7 +104,8 @@
   .profile.show{transform:none;visibility:visible}
   .wrap{max-width:520px;margin:0 auto}
   .pf-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
-  .pf-head h2{margin:0;font-size:34px;line-height:1;font-weight:800;word-break:break-word}
+  .pf-head h2{margin:0;font-size:clamp(24px,7vw,34px);line-height:1.05;font-weight:800;overflow-wrap:break-word}
+  .pf-id > div{min-width:0}
   .pf-head .handle{color:var(--muted);font-size:16px;margin-top:4px}
   .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .tile{background:var(--surface);border-radius:16px;padding:12px 10px}
@@ -202,6 +203,19 @@
   .ach.locked{opacity:.38;filter:grayscale(1)}
   .p-country{font-size:14px;margin:-4px 0 8px}
 
+  /* Uitklapblokken in het profiel */
+  details.drop{background:var(--surface);border-radius:18px;margin-top:14px;overflow:hidden}
+  details.drop summary{list-style:none;display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer;font-weight:800;font-size:19px;line-height:1.1;user-select:none}
+  details.drop summary::-webkit-details-marker{display:none}
+  details.drop summary:focus-visible{outline:3px solid var(--navy);outline-offset:-3px;border-radius:18px}
+  .chev{margin-left:auto;color:var(--muted);font-size:16px;transition:transform .2s}
+  details[open] .chev{transform:rotate(180deg)}
+  .sum-badge{background:var(--red);color:#fff;border-radius:999px;font-size:13px;min-width:22px;height:22px;line-height:22px;text-align:center;padding:0 6px}
+  .drop-body{padding:0 14px 16px;border-top:1px solid var(--line)}
+  .drop-body h4{margin:16px 0 8px;font-size:15px;line-height:1.2;color:var(--muted);font-weight:700}
+  .link.left{margin:6px 0 0;display:block;text-align:left;padding:4px 0}
+  .link.danger{color:#C0392B}
+
   /* Meldingen */
   .toggle{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:16px;cursor:pointer}
   .toggle input{width:22px;height:22px;accent-color:var(--navy);flex:none}
@@ -281,61 +295,73 @@
       </div>
       <button class="chip round" id="pfClose" aria-label="Profiel sluiten">✕</button>
     </div>
-    <div class="av-actions" id="avActions" hidden><button class="link" id="avRemove">Profielfoto verwijderen</button></div>
-
     <div class="tiles" id="pfTiles"></div>
     <p class="pf-last" id="pfLast"></p>
+    <div class="box" id="pfFactsBox"><ul class="facts" id="pfFacts"></ul></div>
 
-    <div class="box">
+    <div class="box" id="pfCountriesBox">
       <h3 id="pfCountriesTitle">Landen</h3>
       <div class="achs" id="pfCountries"></div>
     </div>
-    <div class="box">
+    <div class="box" id="pfAchBox">
       <h3 id="pfAchTitle">Achievements</h3>
       <div class="achs" id="pfAchs"></div>
     </div>
 
-    <div class="box" id="reqBox" hidden>
-      <h3>Vriendverzoeken</h3>
-      <ul class="list" id="reqList"></ul>
-    </div>
-
-    <div class="box">
-      <h3>Vrienden zoeken</h3>
-      <input class="txt" id="searchInput" placeholder="Gebruikersnaam of naam" autocomplete="off" autocapitalize="off">
-      <ul class="list" id="results"></ul>
-    </div>
-
-    <div class="box">
-      <h3 id="friendsTitle">Vrienden</h3>
-      <ul class="list" id="friendList"></ul>
-    </div>
-
-    <div class="box" id="sentBox" hidden>
-      <h3>Verstuurde verzoeken</h3>
-      <ul class="list" id="sentList"></ul>
-    </div>
-
-    <div class="box">
-      <h3>Je naam</h3>
-      <div class="add">
-        <input class="txt" id="fullNameInput" maxlength="40" autocomplete="name">
-        <button class="btn" id="fullNameSave">Opslaan</button>
+    <details class="drop" id="friendsDrop">
+      <summary>
+        <span>👥</span><span id="friendsTitle">Vrienden</span>
+        <span class="sum-badge" id="friendsBadge" hidden></span>
+        <span class="chev">▾</span>
+      </summary>
+      <div class="drop-body">
+        <div id="reqBox" hidden>
+          <h4>Vriendverzoeken</h4>
+          <ul class="list" id="reqList"></ul>
+        </div>
+        <h4>Vriend toevoegen</h4>
+        <input class="txt" id="searchInput" placeholder="Zoek op gebruikersnaam of naam" autocomplete="off" autocapitalize="off">
+        <ul class="list" id="results"></ul>
+        <h4>Jouw vrienden</h4>
+        <ul class="list" id="friendList"></ul>
+        <div id="sentBox" hidden>
+          <h4>Verstuurde verzoeken</h4>
+          <ul class="list" id="sentList"></ul>
+        </div>
       </div>
-    </div>
+    </details>
 
-    <div class="box" id="pushBox">
-      <h3>Meldingen 🔔</h3>
-      <p class="empty" id="pushStatus"></p>
-      <div id="pushPrefs" hidden>
-        <label class="toggle"><input type="checkbox" id="prefPoints" checked> Nieuwe pispoints van vrienden</label>
-        <label class="toggle"><input type="checkbox" id="prefRequests" checked> Vriendverzoeken</label>
+    <details class="drop" id="settingsDrop">
+      <summary>
+        <span>⚙️</span><span>Instellingen</span>
+        <span class="chev">▾</span>
+      </summary>
+      <div class="drop-body">
+        <h4>Je naam</h4>
+        <div class="add">
+          <input class="txt" id="fullNameInput" maxlength="40" autocomplete="name">
+          <button class="btn" id="fullNameSave">Opslaan</button>
+        </div>
+
+        <h4>Profielfoto</h4>
+        <p class="empty">Tik bovenaan op je foto om een nieuwe te kiezen.</p>
+        <div id="avActions" hidden><button class="link left" id="avRemove">Profielfoto verwijderen</button></div>
+
+        <div id="pushBox">
+          <h4>Meldingen 🔔</h4>
+          <p class="empty" id="pushStatus"></p>
+          <div id="pushPrefs" hidden>
+            <label class="toggle"><input type="checkbox" id="prefPoints" checked> Nieuwe pispoints van vrienden</label>
+            <label class="toggle"><input type="checkbox" id="prefRequests" checked> Vriendverzoeken</label>
+          </div>
+          <button class="btn" id="pushBtn">Meldingen aanzetten</button>
+        </div>
+
+        <h4>Account</h4>
+        <button class="link left" id="installLinkProfile" hidden>📲 Pispoint op je beginscherm zetten</button>
+        <button class="link left danger" id="logoutBtn">Uitloggen</button>
       </div>
-      <button class="btn" id="pushBtn">Meldingen aanzetten</button>
-    </div>
-
-    <button class="link" id="installLinkProfile" hidden>📲 Pispoint op je beginscherm zetten</button>
-    <button class="link" id="logoutBtn">Uitloggen</button>
+    </details>
   </div>
 </div>
 
@@ -351,11 +377,11 @@
     </div>
     <div class="tiles" id="frTiles"></div>
     <div class="box"><ul class="facts" id="frFacts"></ul></div>
-    <div class="box">
+    <div class="box" id="frCountriesBox">
       <h3 id="frCountriesTitle">Landen</h3>
       <div class="achs" id="frCountries"></div>
     </div>
-    <div class="box">
+    <div class="box" id="frAchBox">
       <h3 id="frAchTitle">Achievements</h3>
       <div class="achs" id="frAchs"></div>
     </div>
@@ -911,7 +937,10 @@ function renderProfile(){
   [[mine.length, 'pispoints', 'hero'], [likesIn, likesIn === 1 ? 'like ontvangen' : 'likes ontvangen'], [thisMonth, 'deze maand']]
     .forEach(([n, label, cls]) => { const t = el('div', 'tile' + (cls ? ' ' + cls : '')); t.append(el('b', null, n), el('span', null, label)); tiles.append(t); });
   const last = mine[mine.length - 1];
-  $('pfLast').textContent = last ? `Laatste pispoint: ${fmt(last.createdAt)}` : 'Nog geen pispoints. Tijd voor je eerste!';
+  $('pfLast').textContent = last ? '' : 'Nog geen pispoints. Tijd voor je eerste!';
+  $('pfLast').hidden = !!last;
+  $('pfFactsBox').hidden = !last;
+  if (last) renderFacts(uid, $('pfFacts'));
 
   // Verzoeken
   $('reqBox').hidden = !my.requests.length;
@@ -923,6 +952,8 @@ function renderProfile(){
 
   // Vrienden
   $('friendsTitle').textContent = `Vrienden (${my.friends.length})`;
+  $('friendsBadge').hidden = !my.requests.length;
+  $('friendsBadge').textContent = my.requests.length;
   const fl = $('friendList'); fl.innerHTML = '';
   if (!my.friends.length) fl.append(el('p', 'empty', 'Nog geen vrienden. Zoek hierboven op gebruikersnaam of naam en stuur een verzoek.'));
   [...my.friends].sort((a, b) => person(a).fullName.localeCompare(person(b).fullName, 'nl')).forEach(id => {
@@ -948,6 +979,7 @@ function openProfile(){
   if (!my) return;
   $('fullNameInput').value = my.fullName;
   $('profile').classList.add('show'); $('profile').setAttribute('aria-hidden', 'false');
+  if (my.requests.length) $('friendsDrop').open = true;
   renderProfile();
   renderPush();
 }
@@ -966,6 +998,18 @@ function statsFor(id){
     fromMe: pts.filter(p => p.likes.includes(uid)).length,
     first: pts[0], last: pts[pts.length - 1]
   };
+}
+// Feitenlijstje voor je eigen profiel en dat van vrienden
+function renderFacts(id, ul){
+  const st = statsFor(id);
+  ul.innerHTML = '';
+  const fact = (label, value) => { const li = el('li'); li.append(el('span', null, label), el('b', null, value)); ul.append(li); };
+  const rated = st.pts.filter(p => p.rating > 0);
+  fact('Gemiddelde beoordeling', rated.length ? `${(rated.reduce((n, p) => n + p.rating, 0) / rated.length).toFixed(1).replace('.', ',')} ★ (${rated.length}×)` : 'nog geen');
+  fact('Eerste pispoint', st.first ? fmt(st.first.createdAt) : 'nog niet');
+  fact('Laatste pispoint', st.last ? fmt(st.last.createdAt) : 'nog niet');
+  fact('Uitzichtfoto\'s', st.photos);
+  if (id !== uid) fact('Door jou geliked', `${st.fromMe} van ${st.pts.length}`);
 }
 function openFriend(id){
   friendId = id;
@@ -986,14 +1030,7 @@ function renderFriend(){
   [[st.pts.length, 'pispoints', 'hero'], [st.likesIn, st.likesIn === 1 ? 'like ontvangen' : 'likes ontvangen'], [st.thisMonth, 'deze maand']]
     .forEach(([n, label, cls]) => { const t = el('div', 'tile' + (cls ? ' ' + cls : '')); t.append(el('b', null, n), el('span', null, label)); tiles.append(t); });
 
-  const facts = $('frFacts'); facts.innerHTML = '';
-  const fact = (label, value) => { const li = el('li'); li.append(el('span', null, label), el('b', null, value)); facts.append(li); };
-  fact('Eerste pispoint', st.first ? fmt(st.first.createdAt) : 'nog niet');
-  fact('Laatste pispoint', st.last ? fmt(st.last.createdAt) : 'nog niet');
-  fact('Uitzichtfoto\'s', st.photos);
-  fact('Door jou geliked', `${st.fromMe} van ${st.pts.length}`);
-  const rated = st.pts.filter(p => p.rating > 0);
-  fact('Gemiddelde beoordeling', rated.length ? `${(rated.reduce((n, p) => n + p.rating, 0) / rated.length).toFixed(1).replace('.', ',')} ★` : 'nog geen');
+  renderFacts(id, $('frFacts'));
   renderBadges(id, 'fr');
 
   const isFriend = friends().includes(id);
@@ -1426,11 +1463,16 @@ function renderBadges(id, prefix){
   cs.forEach(c => cEl.append(badge(flag(c.code), countryName(c.code), `${c.count}×`, false,
     () => toast(`${flag(c.code)} ${countryName(c.code)}: ${c.count} ${c.count === 1 ? 'pispoint' : 'pispoints'}, sinds ${c.first.toLocaleDateString('nl-NL')}`))));
 
+  $(prefix + 'CountriesBox').hidden = !cs.length;
+
+  // Alleen behaalde badges tonen
   const got = unlockedIds(pts);
-  $(prefix + 'AchTitle').textContent = `Achievements (${got.size}/${ACHIEVEMENTS.length})`;
+  $(prefix + 'AchTitle').textContent = `Achievements (${got.size})`;
+  $(prefix + 'AchBox').hidden = !got.size && !self;
   const aEl = $(prefix + 'Achs'); aEl.innerHTML = '';
-  [...ACHIEVEMENTS].sort((a, b) => got.has(b.id) - got.has(a.id)).forEach(a =>
-    aEl.append(badge(a.emoji, a.name, '', !got.has(a.id), () => toast(`${a.emoji} ${a.name}: ${a.desc}${got.has(a.id) ? '' : ' (nog niet behaald)'}`))));
+  if (!got.size) aEl.append(el('p', 'empty', 'Nog geen badges. Registreer een pispoint en verdien je eerste!'));
+  ACHIEVEMENTS.filter(a => got.has(a.id)).forEach(a =>
+    aEl.append(badge(a.emoji, a.name, '', false, () => toast(`${a.emoji} ${a.name}: ${a.desc}`))));
 }
 
 // Na registreren: nieuw land of nieuwe achievement vieren
