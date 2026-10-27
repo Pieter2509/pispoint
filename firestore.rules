@@ -19,7 +19,8 @@ service cloud.firestore {
         && request.resource.data.fullNameLower == request.resource.data.fullName.lower()
         && request.resource.data.searchKeys is list
         && request.resource.data.searchKeys.size() <= 150
-        && (!('photo' in request.resource.data) || (request.resource.data.photo is string && request.resource.data.photo.size() <= 80000));
+        && (!('photo' in request.resource.data) || (request.resource.data.photo is string && request.resource.data.photo.size() <= 80000))
+        && (!('color' in request.resource.data) || (request.resource.data.color is string && request.resource.data.color.matches('#[0-9A-Fa-f]{6}')));
     }
 
     // ---------- Profielen ----------
@@ -27,7 +28,7 @@ service cloud.firestore {
       allow read: if signedIn();
 
       allow create: if signedIn() && uid == me()
-        && request.resource.data.keys().hasOnly(['username','fullName','fullNameLower','searchKeys','photo','friends','requests','sent','createdAt'])
+        && request.resource.data.keys().hasOnly(['username','fullName','fullNameLower','searchKeys','photo','color','friends','requests','sent','createdAt'])
         && (request.resource.data.username == request.auth.token.email.split('@')[0]
             || (request.auth.token.email.split('@')[0].matches('h-[0-9a-f]{40}')
                 && request.resource.data.username is string
@@ -41,7 +42,7 @@ service cloud.firestore {
       // Je eigen profiel: naam aanpassen, verzoeken afhandelen.
       // Iemand als vriend toevoegen kan alleen als die jou een verzoek stuurde.
       allow update: if signedIn() && uid == me()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName','fullNameLower','searchKeys','photo','friends','requests','sent'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName','fullNameLower','searchKeys','photo','color','friends','requests','sent'])
         && validName()
         && added('requests').size() == 0
         && added('friends').hasOnly(resource.data.requests)
@@ -82,7 +83,10 @@ service cloud.firestore {
           && request.resource.data.get('rating', 0) >= 0
           && request.resource.data.get('rating', 0) <= 5
           && request.resource.data.get('note', '') is string
-          && request.resource.data.get('note', '').size() <= 280;
+          && request.resource.data.get('note', '').size() <= 280
+          && request.resource.data.get('with', []) is list
+          && request.resource.data.get('with', []).size() <= 15
+          && request.resource.data.get('with', []).hasOnly(myFriends());
       }
       function canSee() { return resource.data.uid == me() || resource.data.uid in myFriends(); }
 
@@ -90,7 +94,7 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && request.resource.data.uid == me()
-        && request.resource.data.keys().hasOnly(['uid','lat','lng','accuracy','createdAt','likes','hasPhoto','country','rating','note'])
+        && request.resource.data.keys().hasOnly(['uid','lat','lng','accuracy','createdAt','likes','hasPhoto','country','rating','note','with'])
         && validExtras()
         && request.resource.data.lat is number
         && request.resource.data.lng is number
@@ -105,7 +109,7 @@ service cloud.firestore {
 
       // Eigenaar: foto toevoegen of weghalen, land invullen
       allow update: if signedIn() && resource.data.uid == me()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasPhoto','country','rating','note'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasPhoto','country','rating','note','with'])
         && validExtras()
         && request.resource.data.get('hasPhoto', false) is bool
         && request.resource.data.get('country', '') is string

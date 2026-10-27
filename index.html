@@ -222,6 +222,24 @@
   .link.left{margin:6px 0 0;display:block;text-align:left;padding:4px 0}
   .link.danger{color:#C0392B}
 
+  /* Vrienden taggen */
+  .comp-label{margin:0 0 6px;font-weight:700;font-size:15px}
+  .with-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;-webkit-overflow-scrolling:touch}
+  .wchip{display:flex;align-items:center;gap:6px;flex:none;border:2px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:3px 12px 3px 3px;font:700 14px 'Baloo 2',system-ui,sans-serif;cursor:pointer}
+  .wchip.on{border-color:var(--navy);background:var(--navy);color:#fff}
+  .p-with{display:flex;align-items:center;gap:6px;font-size:14px;margin:-2px 0 8px}
+  .p-with .avs{display:flex}
+  .p-with .avs .avatar{margin-left:-6px;border:2px solid var(--surface)}
+  .p-with .avs .avatar:first-child{margin-left:0}
+
+  /* Kleurkeuze */
+  .colors{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .swatch{width:44px;height:52px;border:2px solid transparent;border-radius:12px;background:var(--bg);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+  .swatch.on{border-color:var(--navy)}
+  .swatch.custom{position:relative;overflow:hidden}
+  .swatch.custom input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:0;padding:0}
+  .swatch .plus{position:absolute;right:3px;bottom:2px;font-size:12px;font-weight:800;color:var(--ink)}
+
   /* Meldingen */
   .toggle{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:16px;cursor:pointer}
   .toggle input{width:22px;height:22px;accent-color:var(--navy);flex:none}
@@ -284,6 +302,10 @@
     <p class="star-label" id="compStarLabel"></p>
     <textarea id="compNote" maxlength="280" rows="2" placeholder="Vertel iets over deze plas (optioneel)"></textarea>
     <div class="comp-count" id="compCount">0/280</div>
+    <div id="compWithBox" hidden>
+      <p class="comp-label">🤝 Samen geplast met</p>
+      <div class="with-chips" id="compWith"></div>
+    </div>
     <div class="comp-photo">
       <button class="btn ghost small" id="compPhotoBtn">📷 Foto van het uitzicht</button>
       <span id="compPhotoPrev"></span>
@@ -350,6 +372,9 @@
           <button class="btn" id="fullNameSave">Opslaan</button>
         </div>
 
+        <h4>Kleur van je druppel</h4>
+        <div class="colors" id="colorChoices"></div>
+
         <h4>Profielfoto</h4>
         <p class="empty">Tik bovenaan op je foto om een nieuwe te kiezen.</p>
         <div id="avActions" hidden><button class="link left" id="avRemove">Profielfoto verwijderen</button></div>
@@ -360,6 +385,8 @@
           <div id="pushPrefs" hidden>
             <label class="toggle"><input type="checkbox" id="prefPoints" checked> Nieuwe pispoints van vrienden</label>
             <label class="toggle"><input type="checkbox" id="prefRequests" checked> Vriendverzoeken</label>
+            <label class="toggle"><input type="checkbox" id="prefLikes" checked> Likes op je pispoints</label>
+            <label class="toggle"><input type="checkbox" id="prefTags" checked> Als je getagd wordt</label>
           </div>
           <button class="btn" id="pushBtn">Meldingen aanzetten</button>
         </div>
@@ -540,6 +567,8 @@ let renderingMap = false;
 map.on('popupclose', () => { if (!renderingMap){ openId = null; openList = null; } });
 
 function colorFor(id){
+  const own = people[id] && people[id].color;
+  if (own) return own;
   if (id === uid) return '#F2C230';
   let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
   return `hsl(${h} 65% 55%)`;
@@ -572,7 +601,7 @@ function searchKeysFor(username, fullName){
 }
 
 // Namen en profielfoto's van andere mensen ophalen (met cache)
-const toPerson = x => ({ username: x.username, fullName: x.fullName, photo: x.photo || null });
+const toPerson = x => ({ username: x.username, fullName: x.fullName, photo: x.photo || null, color: x.color || null });
 function person(id){ return people[id] || { username: '…', fullName: '…', photo: null }; }
 function loadPeople(ids){
   ids.filter(i => !people[i] && !loading[i]).forEach(i => {
@@ -754,11 +783,21 @@ function syncPointListeners(){
   }
   for (const id of want){
     if (pointListeners[id]) continue;
+    let seen = null;   // pispoints die er al waren toen de app opende
     pointListeners[id] = col.where('uid', '==', id).onSnapshot({ includeMetadataChanges: true }, snap => {
+      // Nieuw pispoint van een vriend terwijl de app open is: feestje op de kaart
+      if (seen && id !== uid){
+        snap.docs.filter(d => !seen.has(d.id)).forEach(d => {
+          const x = d.data();
+          const t = x.createdAt ? x.createdAt.toDate() : new Date();
+          if (Date.now() - t < 10 * 60 * 1000) setTimeout(() => friendCelebration(id, x), 300);
+        });
+      }
+      seen = new Set(snap.docs.map(d => d.id));
       pointsByUid[id] = snap.docs.map(d => {
         const x = d.data();
         return {
-          id: d.id, uid: x.uid, lat: x.lat, lng: x.lng, likes: x.likes || [], hasPhoto: !!x.hasPhoto, country: x.country, rating: x.rating || 0, note: x.note || '',
+          id: d.id, uid: x.uid, lat: x.lat, lng: x.lng, likes: x.likes || [], hasPhoto: !!x.hasPhoto, country: x.country, rating: x.rating || 0, note: x.note || '', with: x.with || [],
           createdAt: x.createdAt ? x.createdAt.toDate() : new Date(),
           pending: d.metadata.hasPendingWrites
         };
@@ -790,6 +829,14 @@ function popupFor(p){
   if (p.country) box.append(el('div', 'p-country', p.country === '-' ? '🌊 Buiten elk land' : `${flag(p.country)} ${countryName(p.country)}`));
   if (p.rating) box.append(el('div', 'p-stars', '★'.repeat(p.rating) + '☆'.repeat(5 - p.rating)));
   if (p.note) box.append(el('div', 'p-note', p.note));
+  if (p.with.length){
+    loadPeople(p.with);
+    const w = el('div', 'p-with');
+    const avs = el('span', 'avs');
+    p.with.slice(0, 4).forEach(id => avs.append(avatarEl(id, 24)));
+    w.append(avs, el('span', null, 'Samen met ' + p.with.map(id => id === uid ? 'jou' : firstName(person(id).fullName)).join(', ')));
+    box.append(w);
+  }
   if (p.pending) box.append(el('div', 'p-pending', '⏳ Wordt verstuurd zodra je bereik hebt'));
 
   if (p.hasPhoto){
@@ -837,7 +884,7 @@ function groupPoints(list){
   return groups;
 }
 let groupsByKey = {}, groupOfPoint = {};
-const POPUP_OPTS = { closeButton: false, autoPanPaddingTopLeft: [16, 80], autoPanPaddingBottomRight: [16, 170] };
+const POPUP_OPTS = { closeButton: false, autoPanPaddingTopLeft: [16, 110], autoPanPaddingBottomRight: [16, 170] };
 
 // Inhoud van een open popup wisselen zonder dat Leaflet de klik als 'klik op de kaart' ziet
 const swapPopup = fn => e => { L.DomEvent.stop(e); setTimeout(fn, 0); };
@@ -860,7 +907,7 @@ function groupPopup(g){
     const open = el('button', 'g-open');
     const txt = el('div', 'txt');
     const who = p.uid === uid ? 'Jij' : firstName(person(p.uid).fullName);
-    const extra = [p.rating ? '★'.repeat(p.rating) : '', p.hasPhoto ? '📷' : '', p.note ? `“${p.note}”` : ''].filter(Boolean).join(' ');
+    const extra = [p.rating ? '★'.repeat(p.rating) : '', p.with.length ? `🤝${p.with.length}` : '', p.hasPhoto ? '📷' : '', p.note ? `“${p.note}”` : ''].filter(Boolean).join(' ');
     txt.append(el('b', null, `${who}, ${p.createdAt.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: '2-digit' })} ${p.createdAt.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`));
     if (extra) txt.append(el('small', null, extra));
     open.append(avatarEl(p.uid, 28), txt);
@@ -935,6 +982,7 @@ function renderProfile(){
   $('pfName').textContent = my.fullName;
   $('pfHandle').textContent = '@' + my.username;
   $('pfAvatar').replaceChildren(avatarEl(uid, 84));
+  renderColors();
   $('avActions').hidden = !my.photo;
 
   const mine = pointsOf(uid);
@@ -1017,7 +1065,13 @@ function renderFacts(id, ul){
   fact('Eerste pispoint', st.first ? fmt(st.first.createdAt) : 'nog niet');
   fact('Laatste pispoint', st.last ? fmt(st.last.createdAt) : 'nog niet');
   fact('Uitzichtfoto\'s', st.photos);
-  if (id !== uid) fact('Door jou geliked', `${st.fromMe} van ${st.pts.length}`);
+  if (id !== uid){
+    fact('Door jou geliked', `${st.fromMe} van ${st.pts.length}`);
+    const together = points.filter(p => (p.uid === uid && p.with.includes(id)) || (p.uid === id && p.with.includes(uid))).length;
+    fact('Samen met jou geplast', together);
+  } else {
+    fact('Samen geplast', st.pts.filter(p => p.with.length).length + taggedIn(uid).length);
+  }
 }
 function openFriend(id){
   friendId = id;
@@ -1210,11 +1264,25 @@ const COMPOSER = '__composer__';
 const STAR_LABELS = ['Tik op de sterren om deze plas te beoordelen', 'Matig plekje', 'Kan ermee door', 'Prima plas', 'Topplek', 'Legendarische plas!'];
 let compPos = null, compRating = 0, compPhoto = null, compOpen = false;
 
-let compEdit = null, compPhotoChanged = false;
+let compEdit = null, compPhotoChanged = false, compWith = new Set();
+function renderCompWith(){
+  const list = friends();
+  $('compWithBox').hidden = !list.length;
+  const box = $('compWith'); box.innerHTML = '';
+  [...list].sort((a, b) => person(a).fullName.localeCompare(person(b).fullName, 'nl')).forEach(id => {
+    const on = compWith.has(id);
+    const b = el('button', 'wchip' + (on ? ' on' : ''));
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.append(avatarEl(id, 26), el('span', null, firstName(person(id).fullName)));
+    b.onclick = () => { on ? compWith.delete(id) : compWith.add(id); renderCompWith(); };
+    box.append(b);
+  });
+}
 function openComposer(){
   if (!uid) return;
   map.closePopup();
   compOpen = true; compEdit = null; compPos = null; compRating = 0; compPhoto = null; compPhotoChanged = false;
+  compWith = new Set(); renderCompWith();
   $('compTitle').textContent = 'Nieuw pispoint';
   $('compSave').textContent = '💧 Opslaan';
   $('compNote').value = ''; $('compCount').textContent = '0/280';
@@ -1227,6 +1295,7 @@ function openComposer(){
 function openEditor(p){
   map.closePopup();
   compOpen = true; compEdit = p; compRating = p.rating || 0; compPhotoChanged = false;
+  compWith = new Set(p.with.filter(id => friends().includes(id))); renderCompWith();
   compPhoto = p.hasPhoto ? (photoCache[p.id] && photoCache[p.id].startsWith('data:') ? photoCache[p.id] : 'existing') : null;
   if (compPhoto === 'existing') loadPhoto(p.id);
   $('compTitle').textContent = 'Pispoint bewerken';
@@ -1241,7 +1310,7 @@ function openEditor(p){
 function saveEdit(){
   const p = compEdit;
   const note = $('compNote').value.trim().slice(0, 280);
-  const upd = { rating: compRating, note: note || FV.delete() };
+  const upd = { rating: compRating, note: note || FV.delete(), with: compWith.size ? [...compWith] : FV.delete() };
   const b = db.batch();
   if (compPhotoChanged){
     if (compPhoto && compPhoto !== 'existing'){
@@ -1318,6 +1387,7 @@ function savePoint(){
   const note = $('compNote').value.trim().slice(0, 280);
   const data = { uid, lat, lng, accuracy: Math.round(accuracy), createdAt: TS.now(), likes: [], rating: compRating };
   if (note) data.note = note;
+  if (compWith.size) data.with = [...compWith];
   const b = db.batch();
   if (compPhoto){
     data.hasPhoto = true;
@@ -1328,15 +1398,18 @@ function savePoint(){
   lookingUp.add(ref.id);
   b.commit().catch(err => { console.error(err); toast('Opslaan mislukt'); });
 
-  dropBurst($('compSave'));
+  // Toetsenbord nog open? Eerst laten zakken, anders klopt de positie van de knop niet op de iPhone
+  const keyboardOpen = document.activeElement === $('compNote') ||
+    (window.visualViewport && window.visualViewport.height < window.innerHeight - 120);
   if (navigator.vibrate) navigator.vibrate([30, 40, 60]);
   closeComposer();
+  setTimeout(() => dropBurst($('registerBtn')), keyboardOpen ? 450 : 30);
   openId = ref.id;
   map.flyTo([lat, lng], 17);
   toast('Pispoint geregistreerd 💧');
 
   // Land opzoeken en nieuwe badges vieren
-  const newPoint = { id: ref.id, uid, createdAt: new Date(), likes: [], hasPhoto: !!compPhoto, rating: compRating, note };
+  const newPoint = { id: ref.id, uid, createdAt: new Date(), likes: [], hasPhoto: !!compPhoto, rating: compRating, note, with: [...compWith] };
   lookupCountry(lat, lng).then(c => {
     lookingUp.delete(ref.id);
     if (c !== null) col.doc(ref.id).update({ country: c }).catch(() => {});
@@ -1346,10 +1419,12 @@ function savePoint(){
 
 // Druppel-feestje vanaf de knop
 function dropBurst(fromEl){
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const r = fromEl.getBoundingClientRect();
-  const ox = r.left + r.width / 2, oy = r.top + r.height / 2;
-  const colors = ['#F2C230', '#F2C230', '#F7D560', '#E8A900', '#8ECDF7'];
+  dropBurstAt(r.left + r.width / 2, r.top + r.height / 2, r.width, colorFor(uid));
+}
+function dropBurstAt(ox, oy, width, base){
+  const colors = [base, base, base, '#FFFFFF', '#8ECDF7'];
+  const r = { width };
   for (let i = 0; i < 32; i++){
     const size = 16 + Math.random() * 18;
     const d = el('div', 'burst');
@@ -1447,10 +1522,14 @@ const ACHIEVEMENTS = [
   { id: 'landen3',   emoji: '🌍', name: 'Wereldreiziger',   desc: 'In 3 verschillende landen geplast',         test: pts => countriesOf(pts).length >= 3 },
   { id: 'vijfster',  emoji: '⭐', name: 'Vijfsterrenplas',  desc: 'Een plas 5 sterren gegeven',                test: pts => pts.some(p => p.rating === 5) },
   { id: 'dichter',   emoji: '✍️', name: 'Plasdichter',      desc: '10 berichtjes bij je pispoints geschreven', test: pts => pts.filter(p => p.note).length >= 10 },
+  { id: 'samen',     emoji: '🤝', name: 'Plasmaatjes',      desc: 'Samen geplast met een vriend',              test: (pts, ctx) => pts.some(p => (p.with || []).length) || ctx.tagged.length > 0 },
+  { id: 'feest',     emoji: '🎉', name: 'Plasfeestje',      desc: 'Met 3 of meer vrienden tegelijk geplast',   test: (pts, ctx) => [...pts, ...ctx.tagged].some(p => (p.with || []).length >= 3) },
   { id: 'landen10',  emoji: '✈️', name: 'Wereldplasser',    desc: 'In 10 verschillende landen geplast',        test: pts => countriesOf(pts).length >= 10 },
   { id: 'zee',       emoji: '🌊', name: 'Zeebenen',         desc: 'Geplast buiten elk land, bijvoorbeeld op zee', test: pts => pts.some(p => p.country === '-') },
 ];
-const unlockedIds = pts => new Set(ACHIEVEMENTS.filter(a => { try { return a.test(pts); } catch(e){ return false; } }).map(a => a.id));
+// ctx.tagged = pispoints van anderen waarin deze persoon getagd is
+const unlockedIds = (pts, ctx = { tagged: [] }) => new Set(ACHIEVEMENTS.filter(a => { try { return a.test(pts, ctx); } catch(e){ return false; } }).map(a => a.id));
+const taggedIn = id => points.filter(p => p.uid !== id && p.with.includes(id));
 
 function badge(emoji, title, sub, locked, onTap){
   const b = el('button', 'ach' + (locked ? ' locked' : ''));
@@ -1474,7 +1553,7 @@ function renderBadges(id, prefix){
   $(prefix + 'CountriesBox').hidden = !cs.length;
 
   // Alleen behaalde badges tonen
-  const got = unlockedIds(pts);
+  const got = unlockedIds(pts, { tagged: taggedIn(id) });
   $(prefix + 'AchTitle').textContent = `Achievements (${got.size})`;
   $(prefix + 'AchBox').hidden = !got.size && !self;
   const aEl = $(prefix + 'Achs'); aEl.innerHTML = '';
@@ -1489,9 +1568,53 @@ function celebrate(before, newPoint){
   const msgs = [];
   const c = newPoint.country;
   if (c && c !== '-' && !before.some(p => p.country === c)) msgs.push(`Nieuw land! ${flag(c)} ${countryName(c)}`);
-  const had = unlockedIds(before), now = unlockedIds(after);
+  const ctx = { tagged: taggedIn(uid) };
+  const had = unlockedIds(before, ctx), now = unlockedIds(after, ctx);
   ACHIEVEMENTS.filter(a => now.has(a.id) && !had.has(a.id)).forEach(a => msgs.push(`🏆 ${a.emoji} ${a.name}`));
   msgs.forEach((m, i) => setTimeout(() => { toast(m); if (navigator.vibrate) navigator.vibrate([40, 60, 40]); }, 1600 + i * 2800));
+}
+
+function friendCelebration(friendId, x){
+  const name = firstName(person(friendId).fullName);
+  toast(`${name} heeft net een pispoint achtergelaten 💧`);
+  const pt = map.latLngToContainerPoint([x.lat, x.lng]);
+  const size = map.getSize();
+  if (pt.x >= 0 && pt.y >= 0 && pt.x <= size.x && pt.y <= size.y) dropBurstAt(pt.x, pt.y - 18, 60, colorFor(friendId));
+  else dropBurstAt(size.x / 2, size.y - 120, 200, colorFor(friendId));
+}
+
+// ---------- Kleur van je druppel ----------
+const PRESET_COLORS = ['#F2C230', '#F28C28', '#E0475B', '#E84FA0', '#8E5BD9', '#3D7BEA', '#2BB3C0', '#3BAA5C', '#8B5A2B', '#1E1E1E'];
+function renderColors(){
+  const box = $('colorChoices'); if (!box || !my) return;
+  const current = (my.color || '#F2C230').toUpperCase();
+  box.innerHTML = '';
+  PRESET_COLORS.forEach(c => {
+    const b = el('button', 'swatch' + (c.toUpperCase() === current ? ' on' : ''));
+    b.innerHTML = dropSvg(c, 24, 32);
+    b.setAttribute('aria-label', `Kleur ${c}`);
+    b.onclick = () => saveColor(c);
+    box.append(b);
+  });
+  // Eigen kleur: alle kleuren mogelijk
+  const isCustom = !PRESET_COLORS.some(c => c.toUpperCase() === current);
+  const wrap = el('label', 'swatch custom' + (isCustom ? ' on' : ''));
+  wrap.innerHTML = dropSvg(isCustom ? current : '#FFFFFF', 24, 32) + '<span class="plus">+</span>';
+  wrap.title = 'Eigen kleur kiezen';
+  const input = document.createElement('input');
+  input.type = 'color'; input.value = current.toLowerCase();
+  input.setAttribute('aria-label', 'Eigen kleur kiezen');
+  input.onchange = e => saveColor(e.target.value);
+  wrap.append(input);
+  box.append(wrap);
+}
+function saveColor(c){
+  c = c.toUpperCase();
+  if (!/^#[0-9A-F]{6}$/.test(c)) return;
+  my.color = c; people[uid] = toPerson(my);
+  $('chipAv').replaceChildren(avatarEl(uid, 28));
+  render(); renderColors();
+  usersCol.doc(uid).update({ color: c }).catch(() => toast('Kleur opslaan mislukt'));
 }
 
 // ---------- Pushmeldingen ----------
@@ -1499,7 +1622,7 @@ const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window &&
 const appUrl = () => location.origin + location.pathname.replace(/[^/]*$/, '');
 const TOKEN_KEY = 'pispoint_push_token';
 let messaging = null;
-let prefs = { notifyPoints: true, notifyRequests: true };
+let prefs = { notifyPoints: true, notifyRequests: true, notifyLikes: true, notifyTags: true };
 let unsubPrefs = null;
 const pushReady = (async () => {
   try{
@@ -1517,7 +1640,7 @@ function watchPrefs(){
   if (unsubPrefs) unsubPrefs();
   unsubPrefs = privateRef().onSnapshot(d => {
     const x = d.data() || {};
-    prefs = { notifyPoints: x.notifyPoints !== false, notifyRequests: x.notifyRequests !== false };
+    prefs = { notifyPoints: x.notifyPoints !== false, notifyRequests: x.notifyRequests !== false, notifyLikes: x.notifyLikes !== false, notifyTags: x.notifyTags !== false };
     renderPush();
   }, () => {});
 }
@@ -1556,6 +1679,8 @@ function renderPush(){
   $('pushPrefs').hidden = true; btn.hidden = false; btn.className = 'btn';
   $('prefPoints').checked = prefs.notifyPoints;
   $('prefRequests').checked = prefs.notifyRequests;
+  $('prefLikes').checked = prefs.notifyLikes;
+  $('prefTags').checked = prefs.notifyTags;
   if (!pushSupported){
     if (canInstall){
       status.textContent = 'Zet Pispoint eerst op je beginscherm. Daarna kun je hier meldingen aanzetten.';
@@ -1582,6 +1707,8 @@ function renderPush(){
 }
 $('prefPoints').onchange = e => privateRef().set({ notifyPoints: e.target.checked }, { merge: true }).catch(() => toast('Opslaan mislukt'));
 $('prefRequests').onchange = e => privateRef().set({ notifyRequests: e.target.checked }, { merge: true }).catch(() => toast('Opslaan mislukt'));
+$('prefLikes').onchange = e => privateRef().set({ notifyLikes: e.target.checked }, { merge: true }).catch(() => toast('Opslaan mislukt'));
+$('prefTags').onchange = e => privateRef().set({ notifyTags: e.target.checked }, { merge: true }).catch(() => toast('Opslaan mislukt'));
 
 // Popup bij openen als meldingen nog uit staan
 const ASK_NEVER = 'pispoint_push_never';

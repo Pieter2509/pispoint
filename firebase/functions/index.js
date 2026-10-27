@@ -56,8 +56,10 @@ exports.nieuwPispoint = onDocumentCreated('pispoints/{id}', async event => {
   const friends = owner.get('friends') || [];
   const stars = p.rating ? ' ' + '⭐'.repeat(Math.min(5, p.rating)) : '';
   const note = p.note ? `: "${String(p.note).slice(0, 80)}${p.note.length > 80 ? '…' : ''}"` : '';
-  await Promise.all(friends.map(f =>
-    notify(f, 'notifyPoints', 'Nieuw pispoint 💧', `${name} heeft een nieuwe pispoint achtergelaten${stars}${note}`)
+  const tagged = p.with || [];
+  await Promise.all(friends.map(f => tagged.includes(f)
+    ? notify(f, 'notifyTags', 'Samen geplast 🤝', `${name} heeft je getagd in een pispoint${stars}${note}`)
+    : notify(f, 'notifyPoints', 'Nieuw pispoint 💧', `${name} heeft een nieuwe pispoint achtergelaten${stars}${note}`)
   ));
 });
 
@@ -81,4 +83,23 @@ exports.vriendschap = onDocumentUpdated('users/{uid}', async event => {
     jobs.push(notify(uid, 'notifyRequests', 'Verzoek geaccepteerd 🎉', `${n} heeft je vriendverzoek geaccepteerd`));
   }
   await Promise.all(jobs);
+});
+
+// Pispoint gewijzigd: melding bij een nieuwe like, of als iemand achteraf getagd wordt
+exports.nieuweLike = onDocumentUpdated('pispoints/{id}', async event => {
+  const before = event.data.before.data() || {};
+  const after = event.data.after.data() || {};
+
+  const newTags = (after.with || []).filter(x => !(before.with || []).includes(x));
+  if (newTags.length) {
+    const owner = await nameOf(after.uid);
+    await Promise.all(newTags.map(t => notify(t, 'notifyTags', 'Samen geplast 🤝', `${owner} heeft je getagd in een pispoint`)));
+  }
+
+  const added = (after.likes || []).filter(x => !(before.likes || []).includes(x) && x !== after.uid);
+  for (const liker of added) {
+    const n = await nameOf(liker);
+    const note = after.note ? `: "${String(after.note).slice(0, 60)}${after.note.length > 60 ? '…' : ''}"` : '';
+    await notify(after.uid, 'notifyLikes', 'Nieuwe like ❤️', `${n} vindt je pispoint leuk${note}`);
+  }
 });
